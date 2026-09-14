@@ -2,9 +2,11 @@ import type { JSX } from 'react'
 import { useState } from 'react'
 import type { EditParams } from '@shared/types'
 import { call } from '../lib'
+import { pick } from '@shared/suggestions'
+import Suggest from './Suggest'
 
 export default function EditForm(): JSX.Element {
-  const [p, setP] = useState<EditParams>({ imagePath: '', imageName: '', instruction: '', enrich: true, megapixels: 1.0, steps: 4, seed: null })
+  const [p, setP] = useState<EditParams>({ imagePath: '', imageName: '', instruction: pick('edit'), enrich: true, megapixels: 1.0, steps: 4, seed: null })
   const [preview, setPreview] = useState('')
   const [busy, setBusy] = useState(false)
   const up = <K extends keyof EditParams>(k: K, v: EditParams[K]): void => setP({ ...p, [k]: v })
@@ -17,7 +19,7 @@ export default function EditForm(): JSX.Element {
         {preview && <img src={preview} alt="" style={{ width: '100%', marginTop: 8, borderRadius: 8, border: '1px solid var(--line)' }} />}
         <div className="hint">PNG, JPEG or WebP. It is uploaded to ComfyUI at job time, so this works from the MacBook too.</div>
       </div>
-      <div className="field"><label>What to change</label>
+      <div className="field"><label>What to change <Suggest kind="edit" current={p.instruction} onPick={(s) => up('instruction', s)} /></label>
         <textarea value={p.instruction} onChange={(e) => up('instruction', e.target.value)} placeholder="change the jacket to red, keep everything else the same" />
         <div className="hint">{p.enrich ? 'Gemma turns this into a precise edit instruction that preserves everything you did not mention.' : 'Used exactly as written.'}</div>
       </div>

@@ -69,6 +69,11 @@ npm run package      # -> dist/mac-arm64/CaptainComfy.app
 
 Nothing else to install: no Python, no models, no ComfyUI.
 
+## Suggestions
+
+Every prompt box opens pre-filled with a pre-canned idea from `src/shared/suggestions.ts`;
+**⟳ New idea** next to the label swaps in a different one. Edit the lists there to taste.
+
 ## Image editing
 
 The **Edit** tab takes a source image and an instruction. The image is uploaded to

@@ -3,16 +3,18 @@ import { useState } from 'react'
 import { ASPECTS, type AspectKey, type ImageParams } from '@shared/types'
 import { sizeFor } from '@shared/sizing'
 import { call } from '../lib'
+import { pick } from '@shared/suggestions'
+import Suggest from './Suggest'
 
 export default function ImageForm(): JSX.Element {
-  const [p, setP] = useState<ImageParams>({ prompt: '', enrich: true, aspect: '1:1', megapixels: 1.0, count: 1, steps: 8, seed: null })
+  const [p, setP] = useState<ImageParams>({ prompt: pick('image'), enrich: true, aspect: '1:1', megapixels: 1.0, count: 1, steps: 8, seed: null })
   const [busy, setBusy] = useState(false)
   const size = sizeFor(p.aspect, p.megapixels, 16)
   const up = <K extends keyof ImageParams>(k: K, v: ImageParams[K]): void => setP({ ...p, [k]: v })
   const submit = async (): Promise<void> => { if (!p.prompt.trim()) return; setBusy(true); try { await call('jobs:submitImage', p) } finally { setBusy(false) } }
   return (
     <>
-      <div className="field"><label>Prompt</label>
+      <div className="field"><label>Prompt <Suggest kind="image" current={p.prompt} onPick={(s) => up('prompt', s)} /></label>
         <textarea value={p.prompt} onChange={(e) => up('prompt', e.target.value)} placeholder="a woman with curly hair at a sunny harbor, pastel houses behind" />
         <div className="hint">{p.enrich ? 'A short idea is enough. Gemma adds setting, light, lens and style before rendering.' : 'Used exactly as written.'}</div>
       </div>

@@ -2,19 +2,21 @@ import type { JSX } from 'react'
 import { useState } from 'react'
 import type { MusicParams } from '@shared/types'
 import { call } from '../lib'
+import { pick } from '@shared/suggestions'
+import Suggest from './Suggest'
 
 export default function MusicForm(): JSX.Element {
-  const [p, setP] = useState<MusicParams>({ style: '', lyrics: '', enrich: true, seconds: 30, bpm: 96, steps: 8, seed: null })
+  const [p, setP] = useState<MusicParams>({ style: pick('musicStyle'), lyrics: pick('lyrics'), enrich: true, seconds: 30, bpm: 96, steps: 8, seed: null })
   const [busy, setBusy] = useState(false)
   const up = <K extends keyof MusicParams>(k: K, v: MusicParams[K]): void => setP({ ...p, [k]: v })
   const submit = async (): Promise<void> => { if (!p.style.trim()) return; setBusy(true); try { await call('jobs:submitMusic', p) } finally { setBusy(false) } }
   return (
     <>
-      <div className="field"><label>Style</label>
+      <div className="field"><label>Style <Suggest kind="musicStyle" current={p.style} onPick={(s) => up('style', s)} /></label>
         <textarea value={p.style} onChange={(e) => up('style', e.target.value)} placeholder="warm acoustic folk-pop with a gentle female vocal" style={{ minHeight: 64 }} />
         <div className="hint">{p.enrich ? 'Gemma expands this into genre, instruments, vocal, mood and tempo tags.' : 'Comma-separated tags, used as written.'}</div>
       </div>
-      <div className="field"><label>Lyrics or theme</label>
+      <div className="field"><label>Lyrics or theme <Suggest kind="lyrics" current={p.lyrics} onPick={(s) => up('lyrics', s)} /></label>
         <textarea value={p.lyrics} onChange={(e) => up('lyrics', e.target.value)} placeholder={'a song about staying one more day in a small harbor town\n\nor paste lyrics with [Verse] / [Chorus] tags, or write [instrumental]'} style={{ minHeight: 120 }} />
         <div className="hint">Tagged lyrics and [instrumental] are always used exactly as written, even with enrichment on.</div>
       </div>
