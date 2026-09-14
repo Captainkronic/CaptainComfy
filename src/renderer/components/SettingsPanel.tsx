@@ -35,7 +35,18 @@ export default function SettingsPanel(): JSX.Element {
         <div className="field"><label>Local ComfyUI install (only used by Start it)</label><input value={s.comfyDir} onChange={(e) => up('comfyDir', e.target.value)} />
           <div className="hint">Output dir: {s.comfyOutputDir}</div></div>
       )}
-      <button className="btn primary" onClick={() => { void apply({ comfyHost: s.comfyHost, omlxHost: s.omlxHost, omlxModel: s.omlxModel, comfyDir: s.comfyDir }) }}>Save</button>
+      {!isLoopback(s.comfyHost) && (
+        <div className="field"><label>Remote start (ssh to the Studio)</label>
+          <div className="row">
+            <input value={s.sshUser} onChange={(e) => up('sshUser', e.target.value)} placeholder="ssh user" />
+            <input value={s.sshKey} onChange={(e) => up('sshKey', e.target.value)} placeholder="~/.ssh/id_ed25519" />
+          </div>
+          <input style={{ marginTop: 8 }} value={s.remoteStartCommand} onChange={(e) => up('remoteStartCommand', e.target.value)} />
+          <div className="hint">"Start it on the Studio" runs this command over ssh on the ComfyUI host. The key must be authorized there.</div>
+          <button className="btn" style={{ marginTop: 8 }} onClick={() => { void call('comfy:start').then((r) => { setSaved(r.detail); void refreshHealth() }) }}>Test: start ComfyUI on the Studio now</button>
+        </div>
+      )}
+      <button className="btn primary" onClick={() => { void apply({ comfyHost: s.comfyHost, omlxHost: s.omlxHost, omlxModel: s.omlxModel, comfyDir: s.comfyDir, sshUser: s.sshUser, sshKey: s.sshKey, remoteStartCommand: s.remoteStartCommand }) }}>Save</button>
       <div className="hint">{saved}</div>
     </>
   )

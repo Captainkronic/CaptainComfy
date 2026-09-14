@@ -32,9 +32,7 @@ export default function App(): JSX.Element {
           {health && !health.comfy.up && tab !== 'settings' && (
             <div className="banner">
               <span>{isLoopback(health.comfy.host) ? 'ComfyUI is not running.' : `ComfyUI on the Studio is not answering (${health.comfy.host}).`}</span>
-              {isLoopback(health.comfy.host)
-                ? <button className="btn" onClick={() => { void call('comfy:start').then(() => refreshHealth()) }}>Start it</button>
-                : <button className="btn" onClick={() => setTab('settings')}>Settings</button>}
+              <button className="btn" onClick={() => { void call('comfy:start').then(() => refreshHealth()) }}>{isLoopback(health.comfy.host) ? 'Start it' : 'Start it on the Studio'}</button>
             </div>
           )}
           {tab === 'image' ? <ImageForm /> : tab === 'edit' ? <EditForm /> : tab === 'music' ? <MusicForm /> : <SettingsPanel />}

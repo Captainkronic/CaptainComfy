@@ -85,6 +85,15 @@ sized from the scaled source) and matches the "Easy Image to Image" template in 
 Gemma's `image_edit` brief rewrites the request into a precise instruction that preserves
 everything you did not mention.
 
+## Starting ComfyUI from the MacBook
+
+If ComfyUI on the Studio is down, the banner's **Start it on the Studio** button sshes to the
+ComfyUI host (Settings: ssh user, key, command) and runs `~/.local/bin/comfy-start`, which
+`npm run deploy` installs on the Studio from `scripts/comfy-start.sh`. The script is idempotent:
+it exits at once if 8188 already answers, otherwise starts ComfyUI headless with the proven
+flags, listening on loopback and the tailnet IP, and waits until it responds. The MacBook's
+`~/.ssh/id_ed25519` is authorized on the Studio; the app never handles passwords.
+
 ## Gemma lifecycle
 
 With **Load Gemma only for enrichment** on (the default), each job does:

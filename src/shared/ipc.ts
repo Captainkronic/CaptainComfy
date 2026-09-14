@@ -11,6 +11,10 @@ export interface Settings {
   omlxModel: string
   /** Load Gemma only for the enrichment step and unload it before ComfyUI starts, so its ~7 GB is free during generation. */
   releaseGemma: boolean
+  /** Used by Start it when ComfyUI is remote: ssh into the host of comfyHost and run remoteStartCommand. */
+  sshUser: string
+  sshKey: string
+  remoteStartCommand: string
 }
 
 export interface IpcApi {

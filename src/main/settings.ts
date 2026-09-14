@@ -15,7 +15,10 @@ export const DEFAULTS: Settings = {
   comfyFlags: ['--reserve-vram', '6', '--cache-none', '--disable-smart-memory', '--bf16-unet', '--bf16-vae', '--bf16-text-enc', '--listen', '127.0.0.1,100.120.207.33'],
   omlxHost: process.env['OMLX_HOST'] ?? 'http://127.0.0.1:8000/v1',
   omlxModel: process.env['OMLX_MODEL'] ?? 'gemma-4-E4B-it-MLX-4bit',
-  releaseGemma: true
+  releaseGemma: true,
+  sshUser: 'adam',
+  sshKey: join(HOME, '.ssh', 'id_ed25519'),
+  remoteStartCommand: '$HOME/.local/bin/comfy-start'
 }
 
 export class SettingsStore {

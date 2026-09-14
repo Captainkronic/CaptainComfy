@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
 import { pathToFileURL } from 'node:url'
+import { execFile } from 'node:child_process'
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 import { comfyViewUrl, isLoopback, LOCAL, parseLiteOut, STUDIO } from '@shared/net'
@@ -56,7 +57,21 @@ handle('settings:get', async () => settings.get())
 handle('settings:update', async (patch) => { const s = settings.update(patch); comfy.setHost(s.comfyHost); return s })
 handle('health:get', health)
 handle('settings:presets', async () => ({ local: LOCAL, studio: STUDIO }))
-handle('comfy:start', async () => { const s = settings.get(); if (!isLoopback(s.comfyHost)) return { ok: false, detail: `ComfyUI at ${s.comfyHost} is remote; start it on that machine.` }; return comfy.start({ dir: s.comfyDir, yaml: s.comfyModelPathsYaml, input: s.comfyInputDir, output: s.comfyOutputDir, flags: s.comfyFlags }) })
+async function remoteStart(): Promise<{ ok: boolean; detail: string }> {
+  const s = settings.get(); const host = new URL(s.comfyHost).hostname
+  console.log(`[lite] remote start: ssh ${s.sshUser}@${host} ${s.remoteStartCommand}`)
+  const out = await new Promise<{ ok: boolean; detail: string }>((res) => {
+    execFile('/usr/bin/ssh', ['-i', s.sshKey.replace(/^~/, app.getPath('home')), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=10',
+      `${s.sshUser}@${host}`, s.remoteStartCommand], { timeout: 240_000 }, (err, stdout, stderr) => {
+      const text = `${stdout}${stderr}`.trim().split('\n').pop() ?? ''
+      res(err ? { ok: false, detail: text || err.message } : { ok: true, detail: text })
+    })
+  })
+  if (out.ok) { for (let i = 0; i < 20; i++) { if ((await comfy.up()).ok) break; await new Promise((r) => setTimeout(r, 2000)) } }
+  console.log(`[lite] remote start result: ${JSON.stringify(out)}`)
+  return out
+}
+handle('comfy:start', async () => { const s = settings.get(); if (!isLoopback(s.comfyHost)) return remoteStart(); return comfy.start({ dir: s.comfyDir, yaml: s.comfyModelPathsYaml, input: s.comfyInputDir, output: s.comfyOutputDir, flags: s.comfyFlags }) })
 handle('jobs:list', async () => jobs.list())
 handle('jobs:submitImage', async (p) => jobs.submit('image', p))
 handle('jobs:submitMusic', async (p) => jobs.submit('music', p))
