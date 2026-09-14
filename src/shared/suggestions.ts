@@ -40,21 +40,21 @@ export const SUGGESTIONS = {
     'add a warm knitted scarf'
   ],
   musicStyle: [
-    'warm acoustic folk-pop with a gentle female vocal',
-    'chill lo-fi hip hop for studying, dusty drums, warm Rhodes piano',
-    'upbeat synth-pop with a driving bassline and bright female vocals',
-    'slow late-night jazz trio, brushed drums, upright bass, piano',
-    'anthemic indie rock, jangly guitars, big chorus, male vocal',
-    'cinematic orchestral build, strings and taiko drums, no vocals',
-    'sunny reggae groove, offbeat guitar, warm bass, laid-back male vocal',
-    'dreamy shoegaze, washed-out guitars, whispered vocals',
-    'classic country ballad, pedal steel, acoustic guitar, storytelling vocal',
-    'deep house, four-on-the-floor, filtered chords, soulful vocal chops',
-    'bossa nova, nylon guitar, soft percussion, intimate vocal',
-    '80s power ballad, gated drums, big synths, soaring vocal',
-    'minimal piano and cello, melancholic, instrumental',
-    'funky disco, slap bass, horns, group vocals',
-    'ambient drone with soft field recordings, instrumental'
+    { text: 'warm acoustic folk-pop with a gentle female vocal', bpm: 96 },
+    { text: 'chill lo-fi hip hop for studying, dusty drums, warm Rhodes piano', bpm: 82 },
+    { text: 'upbeat synth-pop with a driving bassline and bright female vocals', bpm: 118 },
+    { text: 'slow late-night jazz trio, brushed drums, upright bass, piano', bpm: 72 },
+    { text: 'anthemic indie rock, jangly guitars, big chorus, male vocal', bpm: 132 },
+    { text: 'cinematic orchestral build, strings and taiko drums, no vocals', bpm: 90 },
+    { text: 'sunny reggae groove, offbeat guitar, warm bass, laid-back male vocal', bpm: 78 },
+    { text: 'dreamy shoegaze, washed-out guitars, whispered vocals', bpm: 108 },
+    { text: 'classic country ballad, pedal steel, acoustic guitar, storytelling vocal', bpm: 74 },
+    { text: 'deep house, four-on-the-floor, filtered chords, soulful vocal chops', bpm: 124 },
+    { text: 'bossa nova, nylon guitar, soft percussion, intimate vocal', bpm: 128 },
+    { text: '80s power ballad, gated drums, big synths, soaring vocal', bpm: 70 },
+    { text: 'minimal piano and cello, melancholic, instrumental', bpm: 66 },
+    { text: 'funky disco, slap bass, horns, group vocals', bpm: 116 },
+    { text: 'ambient drone with soft field recordings, instrumental', bpm: 60 }
   ],
   lyrics: [
     'a song about staying one more day in a small harbor town',
@@ -76,7 +76,12 @@ export const SUGGESTIONS = {
 } as const
 export type SuggestionKind = keyof typeof SUGGESTIONS
 
-export function pick(kind: SuggestionKind, not?: string): string {
+export function pickStyle(not?: string): { text: string; bpm: number } {
+  const pool = SUGGESTIONS.musicStyle.filter((s) => s.text !== not)
+  return pool[Math.floor(Math.random() * pool.length)] ?? SUGGESTIONS.musicStyle[0]!
+}
+
+export function pick(kind: Exclude<SuggestionKind, 'musicStyle'>, not?: string): string {
   const list = SUGGESTIONS[kind] as readonly string[]
   const pool = list.filter((s) => s !== not)
   return pool[Math.floor(Math.random() * pool.length)] ?? list[0]!

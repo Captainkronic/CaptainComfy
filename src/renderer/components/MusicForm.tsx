@@ -2,17 +2,17 @@ import type { JSX } from 'react'
 import { useState } from 'react'
 import type { MusicParams } from '@shared/types'
 import { call } from '../lib'
-import { pick } from '@shared/suggestions'
+import { pick, pickStyle } from '@shared/suggestions'
 import Suggest from './Suggest'
 
 export default function MusicForm(): JSX.Element {
-  const [p, setP] = useState<MusicParams>({ style: pick('musicStyle'), lyrics: pick('lyrics'), enrich: true, seconds: 30, bpm: 96, steps: 8, seed: null })
+  const [p, setP] = useState<MusicParams>(() => { const s = pickStyle(); return { style: s.text, lyrics: pick('lyrics'), enrich: true, seconds: 30, bpm: s.bpm, steps: 8, seed: null } })
   const [busy, setBusy] = useState(false)
   const up = <K extends keyof MusicParams>(k: K, v: MusicParams[K]): void => setP({ ...p, [k]: v })
   const submit = async (): Promise<void> => { if (!p.style.trim()) return; setBusy(true); try { await call('jobs:submitMusic', p) } finally { setBusy(false) } }
   return (
     <>
-      <div className="field"><label>Style <Suggest kind="musicStyle" current={p.style} onPick={(s) => up('style', s)} /></label>
+      <div className="field"><label>Style <button type="button" className="btn ghost suggest" title="Different style, with a tempo that fits it" onClick={() => { const s = pickStyle(p.style); setP({ ...p, style: s.text, bpm: s.bpm }) }}>⟳ New idea</button></label>
         <textarea value={p.style} onChange={(e) => up('style', e.target.value)} placeholder="warm acoustic folk-pop with a gentle female vocal" style={{ minHeight: 64 }} />
         <div className="hint">{p.enrich ? 'Gemma expands this into genre, instruments, vocal, mood and tempo tags.' : 'Comma-separated tags, used as written.'}</div>
       </div>
@@ -23,7 +23,7 @@ export default function MusicForm(): JSX.Element {
       <label className="toggle"><input type="checkbox" checked={p.enrich} onChange={(e) => up('enrich', e.target.checked)} /> Enrich with Gemma</label>
       <div className="row">
         <div className="field"><label>Length (seconds)</label><input type="number" min={10} max={240} step={5} value={p.seconds} onChange={(e) => up('seconds', Number(e.target.value))} /><div className="hint">30 is a quick test; 60-180 is a song</div></div>
-        <div className="field"><label>Tempo (bpm)</label><input type="number" min={40} max={220} value={p.bpm} onChange={(e) => up('bpm', Number(e.target.value))} /></div>
+        <div className="field"><label>Tempo (bpm)</label><input type="number" min={40} max={220} value={p.bpm} onChange={(e) => up('bpm', Number(e.target.value))} /><div className="hint">Set to fit the style; the model drifts toward the genre's usual tempo if these clash</div></div>
       </div>
       <div className="row">
         <div className="field"><label>Steps</label><input type="number" min={4} max={16} value={p.steps} onChange={(e) => up('steps', Number(e.target.value))} /><div className="hint">Turbo model: 8</div></div>
