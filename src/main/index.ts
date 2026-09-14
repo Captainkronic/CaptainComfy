@@ -150,11 +150,12 @@ void app.whenReady().then(async () => {
     } catch (err) { return new Response(String(err), { status: 502 }) }
   })
   win = createWindow()
+  jobs.resume()
   // Headless test hook: CAPTAINCOMFY_TEST_EDIT=/path/to.png submits one edit job at startup.
   const testEdit = process.env['CAPTAINCOMFY_TEST_EDIT']
   if (testEdit) setTimeout(() => { jobs.submit('edit', { imagePath: testEdit, imageName: testEdit.split('/').pop() ?? testEdit, instruction: process.env['CAPTAINCOMFY_TEST_INSTRUCTION'] ?? 'make it a rainy evening', enrich: true, megapixels: 1, steps: 4, seed: 7 }) }, 3000)
   if (process.env['LITE_PROBE']) setTimeout(() => { void win?.webContents.executeJavaScript("(() => { const imgs=[...document.querySelectorAll('.grid img')]; return JSON.stringify({ cards: document.querySelectorAll('.card').length, grids: document.querySelectorAll('.grid').length, imgs: imgs.map(i => ({ src: i.src.slice(0, 80), complete: i.complete, w: i.naturalWidth, h: i.naturalHeight, box: i.getBoundingClientRect().width + 'x' + i.getBoundingClientRect().height })) }) })()").then((r) => console.log('[probe] ' + String(r))).catch((e) => console.log('[probe] failed ' + String(e))) }, 6000)
-  setInterval(() => { void health().then((h) => emit('event:health', h)) }, 10_000)
+  setInterval(() => { void health().then((h) => emit('event:health', h)); jobs.watchdog() }, 10_000)
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) win = createWindow() })
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

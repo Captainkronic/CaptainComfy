@@ -23,10 +23,25 @@ export class JobManager {
   private jobs: Job[] = []
   private running = false
   private unsubscribe: (() => void) | null = null
+  private aborts = new Map<string, () => void>()
+  private current: Job | null = null
+  private lastActivity = 0
+  /** Runs every 10 s from main: restarts an idle pump with queued work, and fails a job that has gone silent. */
+  watchdog(): void {
+    const stale = this.running && this.current && Date.now() - this.lastActivity > 10 * 60_000
+    if (stale && this.current) {
+      console.warn(`[lite] job ${this.current.id} silent for 10 min; failing it and releasing the queue`)
+      this.patch(this.current, { status: 'failed', error: 'no progress for 10 minutes (ComfyUI or Gemma stopped responding)', progressLabel: 'Failed', finishedAt: Date.now() })
+      this.aborts.get(this.current.id)?.(); this.running = false; this.current = null
+    }
+    if (!this.running && this.jobs.some((j) => j.status === 'queued')) void this.pump()
+  }
   constructor(private readonly d: JobDeps) {
     try { if (existsSync(d.file)) this.jobs = (JSON.parse(readFileSync(d.file, 'utf8')) as Job[]).map((j) => ({ ...j, outputs: (j.outputs ?? []).map((o) => ({ ...o, viewUrl: o.viewUrl ?? o.url, url: liteOutUrl(o.subfolder, o.filename, o.type) })) })).map((j) => (j.status === 'done' || j.status === 'failed' || j.status === 'cancelled') ? j : { ...j, status: 'failed' as const, error: 'app closed while running' }) } catch { this.jobs = [] }
   }
   list(): Job[] { return this.jobs.map((j) => ({ ...j })) }
+  /** Call once after construction: jobs left queued by a previous run start again. */
+  resume(): void { if (this.jobs.some((j) => j.status === 'queued')) void this.pump() }
 
   submit(kind: 'image' | 'edit' | 'music', params: ImageParams | EditParams | MusicParams): Job {
     const job: Job = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, kind, createdAt: Date.now(), status: 'queued', params, progress: null, progressLabel: 'Queued', outputs: [] }
@@ -36,10 +51,11 @@ export class JobManager {
     const job = this.jobs.find((j) => j.id === id); if (!job) return
     if (job.promptId) await this.d.comfy.cancel(job.promptId)
     if (job.status === 'queued' || job.status === 'enriching' || job.status === 'running') this.patch(job, { status: 'cancelled', progressLabel: 'Cancelled', finishedAt: Date.now() })
+    this.aborts.get(job.id)?.()   // wake the watcher so the next queued job can start
   }
   clearFinished(): void { this.jobs = this.jobs.filter((j) => j.status === 'queued' || j.status === 'enriching' || j.status === 'running'); this.save() }
 
-  private patch(job: Job, p: Partial<Job>): void { Object.assign(job, p); this.save(); this.d.emit(job) }
+  private patch(job: Job, p: Partial<Job>): void { Object.assign(job, p); this.lastActivity = Date.now(); this.save(); this.d.emit(job) }
   private save(): void { try { mkdirSync(dirname(this.d.file), { recursive: true }); writeFileSync(this.d.file, JSON.stringify(this.jobs.slice(0, 200))) } catch { /* non-fatal */ } }
 
   private async pump(): Promise<void> {
@@ -49,7 +65,9 @@ export class JobManager {
       for (;;) {
         const next = [...this.jobs].reverse().find((j) => j.status === 'queued')
         if (!next) break
+        this.current = next; this.lastActivity = Date.now()
         await this.run(next)
+        this.current = null
       }
     } finally { this.running = false }
   }
@@ -121,8 +139,9 @@ export class JobManager {
     return new Promise((resolve) => {
       let settled = false
       let eventError: string | null = null
+      this.aborts.set(job.id, () => { eventError = eventError ?? 'cancelled'; void finish() })
       const finish = async (): Promise<void> => {
-        if (settled) return; settled = true; off(); clearInterval(poll)
+        if (settled) return; settled = true; off(); clearInterval(poll); this.aborts.delete(job.id)
         // ComfyUI emits the finishing event a beat before it writes history; wait for history to exist.
         let r: { outputs: Output[]; status?: string; error?: string } = { outputs: [] }
         for (let i = 0; i < 20; i++) {
@@ -152,7 +171,16 @@ export class JobManager {
         } else if (e.type === 'execution_interrupted') { eventError = 'interrupted'; void finish() }
         else if (e.type === 'execution_success') { void finish() }
       })
-      const poll = setInterval(() => { void this.d.comfy.outputs(promptId).then((r) => { if (r.status) void finish() }).catch(() => undefined) }, 15_000)
+      // Belt and braces every 15 s: history done -> finish; prompt gone from queue AND history
+      // (ComfyUI restarted or was killed) -> fail instead of waiting forever.
+      const poll = setInterval(() => {
+        void (async () => {
+          const r = await this.d.comfy.outputs(promptId).catch(() => null)
+          if (r?.status) { void finish(); return }
+          const q = await this.d.comfy.queued(promptId).catch(() => null)
+          if (q === false && r && !r.status) { eventError = 'ComfyUI no longer has this job (it was restarted or killed)'; void finish() }
+        })()
+      }, 15_000)
     })
   }
 }

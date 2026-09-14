@@ -90,6 +90,14 @@ export class ComfyClient {
     if (q?.queue_running.some((item) => item[1] === promptId)) await fetch(`${this.base}/interrupt`, { method: 'POST' }).catch(() => undefined)
   }
 
+  /** true = running or pending, false = not in the queue, null = could not ask. */
+  async queued(promptId: string): Promise<boolean | null> {
+    try {
+      const q = await fetch(`${this.base}/queue`, { signal: AbortSignal.timeout(8000) }).then((r) => r.json() as Promise<{ queue_running: unknown[][]; queue_pending: unknown[][] }>)
+      return [...q.queue_running, ...q.queue_pending].some((item) => item[1] === promptId)
+    } catch { return null }
+  }
+
   async outputs(promptId: string): Promise<{ outputs: Output[]; status?: string; error?: string }> {
     const res = await fetch(`${this.base}/history/${promptId}`, { signal: AbortSignal.timeout(10_000) })
     const j = (await res.json()) as Record<string, { status?: { status_str?: string; messages?: Array<[string, Record<string, unknown>]> }; outputs?: Record<string, Record<string, Array<{ filename: string; subfolder: string; type: 'output' | 'temp' }>>> }>
