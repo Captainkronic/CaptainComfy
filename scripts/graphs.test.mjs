@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const out = mkdtempSync(join(tmpdir(), 'cll-'))
-execFileSync('npx', ['tsc', 'src/shared/types.ts', 'src/shared/sizing.ts', 'src/shared/graphs.ts', 'src/shared/enrich.ts', 'src/shared/net.ts', '--outDir', out, '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'es2022', '--skipLibCheck'], { stdio: 'inherit' })
+execFileSync('npx', ['tsc', 'src/shared/types.ts', 'src/shared/sizing.ts', 'src/shared/graphs.ts', 'src/shared/enrich.ts', 'src/shared/net.ts', 'src/shared/ideas.ts', 'src/shared/suggestions.ts', '--outDir', out, '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'es2022', '--skipLibCheck'], { stdio: 'inherit' })
 writeFileSync(join(out, 'package.json'), '{"type":"module"}')
 import { readdirSync, readFileSync } from 'node:fs'
 for (const f of readdirSync(out)) if (f.endsWith('.js')) writeFileSync(join(out, f), readFileSync(join(out, f), 'utf8').replace(/from '(\.\/[a-z]+)'/g, "from '$1.js'"))
@@ -55,4 +55,17 @@ test('style tags always carry the configured bpm and nothing else', () => {
   assert.equal(normalizeStyleTags('deep house, 120BPM, filtered chords', 124), 'deep house, filtered chords, 124 bpm')
   assert.equal(normalizeStyleTags('', 100), '100 bpm')
   assert.ok(musicStyleBrief(96).includes("exactly 96 bpm")); assert.ok(!musicStyleBrief(96).includes('NNN'))
+})
+
+const { imageIdea, editIdea, musicIdea, lyricIdea, IDEA_SPACE } = await fix('ideas')
+test('idea space is in the thousands and samples are distinct', () => {
+  assert.ok(IDEA_SPACE.image > 100000, 'image ' + IDEA_SPACE.image); assert.ok(IDEA_SPACE.music > 5000, 'music ' + IDEA_SPACE.music); assert.ok(IDEA_SPACE.edit >= 800, 'edit ' + IDEA_SPACE.edit)
+  const imgs = new Set(Array.from({ length: 500 }, imageIdea)); assert.ok(imgs.size > 490, `only ${imgs.size} distinct image ideas in 500`)
+  const mus = new Set(Array.from({ length: 500 }, () => musicIdea().text)); assert.ok(mus.size > 450, `only ${mus.size} distinct music ideas in 500`)
+  assert.ok(new Set(Array.from({ length: 200 }, editIdea)).size > 150); assert.ok(new Set(Array.from({ length: 200 }, lyricIdea)).size > 100)
+})
+test('music ideas carry a tempo that fits their genre', () => {
+  for (let i = 0; i < 300; i++) { const m = musicIdea(); assert.ok(m.bpm >= 50 && m.bpm <= 190, m.text); assert.ok(m.text.split(',').length >= 4) }
+  const dnb = Array.from({ length: 400 }, musicIdea).filter((m) => m.text.includes('drum and bass'))
+  for (const m of dnb) assert.ok(m.bpm >= 170 && m.bpm <= 176, `${m.text} @ ${m.bpm}`)
 })

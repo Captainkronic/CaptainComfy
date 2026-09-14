@@ -72,8 +72,12 @@ Nothing else to install: no Python, no models, no ComfyUI.
 
 ## Suggestions
 
-Every prompt box opens pre-filled with a pre-canned idea from `src/shared/suggestions.ts`;
-**⟳ New idea** next to the label swaps in a different one. Edit the lists there to taste.
+Every prompt box opens pre-filled with an idea, and **⟳ New idea** swaps in another. Ideas are
+assembled from curated parts in `src/shared/ideas.ts` (subjects, settings, light, lens, style;
+genres with their own tempo range, instruments, moods, vocals; edit operations; lyric themes),
+which gives well over 100,000 distinct image prompts and thousands of music styles, each with a
+bpm that fits its genre. About one in seven picks is one of the hand-written seeds in
+`suggestions.ts`. Edit either file to steer the vocabulary.
 
 ## Image editing
 

@@ -76,12 +76,19 @@ export const SUGGESTIONS = {
 } as const
 export type SuggestionKind = keyof typeof SUGGESTIONS
 
+import { editIdea, imageIdea, lyricIdea, musicIdea } from './ideas'
+
+/** Mostly generated (tens of thousands of combinations), occasionally one of the hand-written seeds. */
 export function pickStyle(not?: string): { text: string; bpm: number } {
-  const pool = SUGGESTIONS.musicStyle.filter((s) => s.text !== not)
-  return pool[Math.floor(Math.random() * pool.length)] ?? SUGGESTIONS.musicStyle[0]!
+  if (Math.random() < 0.15) { const pool = SUGGESTIONS.musicStyle.filter((s) => s.text !== not); return pool[Math.floor(Math.random() * pool.length)] ?? SUGGESTIONS.musicStyle[0]! }
+  let m = musicIdea(); if (m.text === not) m = musicIdea(); return m
 }
 
 export function pick(kind: Exclude<SuggestionKind, 'musicStyle'>, not?: string): string {
+  if (Math.random() >= 0.15) {
+    const gen = kind === 'image' ? imageIdea : kind === 'edit' ? editIdea : lyricIdea
+    let s = gen(); if (s === not) s = gen(); return s
+  }
   const list = SUGGESTIONS[kind] as readonly string[]
   const pool = list.filter((s) => s !== not)
   return pool[Math.floor(Math.random() * pool.length)] ?? list[0]!
