@@ -13,14 +13,14 @@ export async function omlxUp(host: string, model: string): Promise<{ ok: boolean
 }
 
 /** Never throws: on any failure the original text is returned with used=false and a reason. */
-export async function enrich(host: string, model: string, mode: EnrichMode, text: string, maxTokens = 220): Promise<EnrichResult> {
+export async function enrich(host: string, model: string, mode: EnrichMode, text: string, maxTokens = 220, systemOverride?: string): Promise<EnrichResult> {
   const original = text.trim()
   if (!original) return { text: original, used: false, detail: 'empty' }
   if (mode === 'music_lyrics' && lyricsAreFinal(original)) return { text: original, used: false, detail: 'lyrics already structured; passed through' }
   try {
     const res = await fetch(`${host.replace(/\/+$/, '')}/chat/completions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(180_000),
-      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.7, messages: [{ role: 'system', content: BRIEFS[mode] }, { role: 'user', content: original }] })
+      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.7, messages: [{ role: 'system', content: systemOverride ?? BRIEFS[mode] }, { role: 'user', content: original }] })
     })
     if (!res.ok) return { text: original, used: false, detail: `oMLX HTTP ${res.status}` }
     const j = (await res.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_time?: number } }

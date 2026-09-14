@@ -11,6 +11,7 @@ import type { EditParams, ImageParams, Job, JobStatus, MusicParams, Output } fro
 import type { ComfyClient, ComfyEvent } from './comfy'
 import { liteOutUrl } from '@shared/net'
 import { enrich, loadModel, unloadModel } from './enrich'
+import { musicStyleBrief, normalizeStyleTags } from '@shared/enrich'
 
 export interface JobDeps {
   comfy: ComfyClient
@@ -112,11 +113,13 @@ export class JobManager {
           this.patch(job, { status: 'enriching', progressLabel: 'Loading Gemma', startedAt: Date.now() })
           await loadModel(host, model); gemmaUsed = true
           this.patch(job, { progressLabel: 'Gemma is expanding the style' })
-          const s = await enrich(host, model, 'music_style', p.style); style = s.text
+          const s = await enrich(host, model, 'music_style', p.style, 220, musicStyleBrief(p.bpm)); style = s.text
           this.patch(job, { progressLabel: 'Gemma is writing the lyrics' })
           const l = await enrich(host, model, 'music_lyrics', p.lyrics); lyrics = l.text
           this.patch(job, { enriched: { style: s.used ? s.text : undefined, lyrics: l.used ? l.text : undefined }, progressLabel: `${s.detail}; ${l.detail}` })
         }
+        style = normalizeStyleTags(style, p.bpm)   // tags and the bpm parameter must agree
+        this.patch(job, { enriched: { ...(job.enriched ?? {}), style } })
         if (job.status === 'cancelled') return
         graph = musicGraph(p, style, lyrics, seed)
       }

@@ -13,7 +13,7 @@ for (const f of readdirSync(out)) if (f.endsWith('.js')) writeFileSync(join(out,
 const fix = async (n) => import(join(out, n + '.js'))
 const { sizeFor, clampSeconds } = await fix('sizing')
 const { imageGraph, musicGraph, editGraph } = await fix('graphs')
-const { lyricsAreFinal, cleanLLMText } = await fix('enrich')
+const { lyricsAreFinal, cleanLLMText, normalizeStyleTags, musicStyleBrief } = await fix('enrich')
 
 test('sizeFor snaps to 16 and honours aspect', () => {
   const s = sizeFor('1:1', 1.0); assert.equal(s.width, 1008); assert.equal(s.height, 1008)
@@ -48,4 +48,11 @@ test('edit graph mirrors the Klein 4B distilled template', () => {
   assert.equal(g['4'].inputs.image, 'captaincomfy_x.png'); assert.equal(g['7'].inputs.text, 'final')
   assert.deepEqual(g['10'].inputs, { conditioning: ['7', 0], latent: ['9', 0] }); assert.deepEqual(g['11'].inputs.conditioning, ['8', 0])
   assert.equal(g['16'].inputs.cfg, 1); assert.equal(g['14'].inputs.sampler_name, 'euler'); assert.equal(g['15'].inputs.steps, 4); assert.deepEqual(g['12'].inputs.width, ['6', 0])
+})
+
+test('style tags always carry the configured bpm and nothing else', () => {
+  assert.equal(normalizeStyleTags('lofi hip hop, mellow, 80 bpm', 96), 'lofi hip hop, mellow, 96 bpm')
+  assert.equal(normalizeStyleTags('deep house, 120BPM, filtered chords', 124), 'deep house, filtered chords, 124 bpm')
+  assert.equal(normalizeStyleTags('', 100), '100 bpm')
+  assert.ok(musicStyleBrief(96).includes("exactly 96 bpm")); assert.ok(!musicStyleBrief(96).includes('NNN'))
 })

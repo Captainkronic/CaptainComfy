@@ -15,6 +15,21 @@ export function lyricsAreFinal(text: string): boolean {
   return TAGGED.test(text)
 }
 
+/** Tags for ACE-Step must agree with the bpm parameter: strip any tempo Gemma or the user wrote, append ours. */
+export function normalizeStyleTags(style: string, bpm: number): string {
+  const b = Math.round(bpm)
+  const cleaned = style
+    .replace(/\b\d{2,3}\s*bpm\b/gi, '')
+    .split(',').map((s) => s.trim()).filter(Boolean).join(', ')
+  return cleaned ? `${cleaned}, ${b} bpm` : `${b} bpm`
+}
+
+/** The music-style brief with the exact tempo baked in, so the LLM never suggests its own. */
+export function musicStyleBrief(bpm: number): string {
+  const b = Math.round(bpm)
+  return BRIEFS.music_style.replace("and tempo as 'NNN bpm'", `and the tempo, which is exactly ${b} bpm (write '${b} bpm' and never any other tempo)`)
+}
+
 export function cleanLLMText(t: string): string {
   return t.trim().replace(/^(here('s| is)[^:\n]*:\s*)/i, '').trim().replace(/^["']|["']$/g, '').trim()
 }
