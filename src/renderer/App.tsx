@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { useStore } from './state/store'
 import ImageForm from './components/ImageForm'
 import MusicForm from './components/MusicForm'
+import EditForm from './components/EditForm'
 import JobList from './components/JobList'
 import { call } from './lib'
 import SettingsPanel from './components/SettingsPanel'
@@ -16,6 +17,7 @@ export default function App(): JSX.Element {
       <div className="titlebar">
         <div className="tabs">
           <button className={`tab ${tab === 'image' ? 'active' : ''}`} onClick={() => setTab('image')}>Image</button>
+          <button className={`tab ${tab === 'edit' ? 'active' : ''}`} onClick={() => setTab('edit')}>Edit</button>
           <button className={`tab ${tab === 'music' ? 'active' : ''}`} onClick={() => setTab('music')}>Music</button>
           <button className={`tab ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>Settings</button>
         </div>
@@ -35,7 +37,7 @@ export default function App(): JSX.Element {
                 : <button className="btn" onClick={() => setTab('settings')}>Settings</button>}
             </div>
           )}
-          {tab === 'image' ? <ImageForm /> : tab === 'music' ? <MusicForm /> : <SettingsPanel />}
+          {tab === 'image' ? <ImageForm /> : tab === 'edit' ? <EditForm /> : tab === 'music' ? <MusicForm /> : <SettingsPanel />}
         </div>
         {tab === 'settings' ? <div className="results"><div className="empty">Settings apply immediately. Jobs already queued keep running where they were sent.</div></div> : <JobList kind={tab} />}
       </div>

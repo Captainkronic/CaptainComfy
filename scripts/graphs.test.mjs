@@ -12,7 +12,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 for (const f of readdirSync(out)) if (f.endsWith('.js')) writeFileSync(join(out, f), readFileSync(join(out, f), 'utf8').replace(/from '(\.\/[a-z]+)'/g, "from '$1.js'"))
 const fix = async (n) => import(join(out, n + '.js'))
 const { sizeFor, clampSeconds } = await fix('sizing')
-const { imageGraph, musicGraph } = await fix('graphs')
+const { imageGraph, musicGraph, editGraph } = await fix('graphs')
 const { lyricsAreFinal, cleanLLMText } = await fix('enrich')
 
 test('sizeFor snaps to 16 and honours aspect', () => {
@@ -41,4 +41,11 @@ test('lite-out url round-trips and marks type', () => {
 test('loopback detection and view url', () => {
   assert.ok(isLoopback('http://127.0.0.1:8188')); assert.ok(isLoopback('http://localhost:8188')); assert.ok(!isLoopback('http://adams-mac-studio.tailc7bb1e.ts.net:8188'))
   assert.equal(comfyViewUrl('http://h:1/', 's', 'f.png', 'output'), 'http://h:1/view?filename=f.png&subfolder=s&type=output')
+})
+
+test('edit graph mirrors the Klein 4B distilled template', () => {
+  const g = editGraph({ imagePath: '/x.png', imageName: 'x.png', instruction: 'i', enrich: false, megapixels: 1, steps: 4, seed: null }, 'final', 9, 'captaincomfy_x.png')
+  assert.equal(g['4'].inputs.image, 'captaincomfy_x.png'); assert.equal(g['7'].inputs.text, 'final')
+  assert.deepEqual(g['10'].inputs, { conditioning: ['7', 0], latent: ['9', 0] }); assert.deepEqual(g['11'].inputs.conditioning, ['8', 0])
+  assert.equal(g['16'].inputs.cfg, 1); assert.equal(g['14'].inputs.sampler_name, 'euler'); assert.equal(g['15'].inputs.steps, 4); assert.deepEqual(g['12'].inputs.width, ['6', 0])
 })

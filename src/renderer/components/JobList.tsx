@@ -1,8 +1,9 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
-import type { ImageParams, Job, Kind, MusicParams, Output } from '@shared/types'
+import type { EditParams, ImageParams, Job, Kind, MusicParams, Output } from '@shared/types'
 import { useStore } from '../state/store'
 import { call } from '../lib'
+import { liteOutUrl } from '@shared/net'
 
 function elapsed(j: Job): string {
   if (!j.startedAt) return ''
@@ -13,7 +14,7 @@ function elapsed(j: Job): string {
 function Card({ job, onZoom }: { job: Job; onZoom: (o: Output) => void }): JSX.Element {
   const live = job.status === 'queued' || job.status === 'enriching' || job.status === 'running'
   const params = job.params
-  const summary = job.kind === 'image' ? (params as ImageParams).prompt : `${(params as MusicParams).style}\n${(params as MusicParams).lyrics}`
+  const summary = job.kind === 'image' ? (params as ImageParams).prompt : job.kind === 'edit' ? `${(params as EditParams).imageName}: ${(params as EditParams).instruction}` : `${(params as MusicParams).style}\n${(params as MusicParams).lyrics}`
   return (
     <div className="card">
       <div className="head">
@@ -33,8 +34,16 @@ function Card({ job, onZoom }: { job: Job; onZoom: (o: Output) => void }): JSX.E
       {job.enriched?.style && <div className="enriched"><b>Style:</b> {job.enriched.style}</div>}
       {job.enriched?.lyrics && <div className="enriched"><b>Lyrics:</b>{'\n'}{job.enriched.lyrics}</div>}
       {job.error && <div className="err">{job.error}</div>}
-      {job.outputs.length > 0 && (
-        job.kind === 'image'
+      {job.kind === 'edit' && job.uploaded && (
+        <div className="grid two">
+          <figure><img src={liteOutUrl(job.uploaded.subfolder, job.uploaded.name, 'input')} alt="" onClick={() => onZoom({ filename: job.uploaded!.name, subfolder: job.uploaded!.subfolder, type: 'output', url: liteOutUrl(job.uploaded!.subfolder, job.uploaded!.name, 'input'), viewUrl: '' })} /><figcaption>Before</figcaption></figure>
+          {job.outputs[0]
+            ? <figure><img src={job.outputs[0].url} alt="" onClick={() => onZoom(job.outputs[0]!)} /><figcaption>After</figcaption></figure>
+            : <figure><div className="pending">{live ? 'Editing…' : 'No result'}</div><figcaption>After</figcaption></figure>}
+        </div>
+      )}
+      {job.outputs.length > 0 && job.kind !== 'edit' && (
+        job.kind !== 'music'
           ? <div className="grid">{job.outputs.map((o) => <img key={o.url} src={o.url} alt="" onClick={() => onZoom(o)} />)}</div>
           : job.outputs.map((o) => <audio key={o.url} controls preload="metadata" src={o.url} />)
       )}

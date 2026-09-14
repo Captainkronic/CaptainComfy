@@ -1,7 +1,7 @@
 {
-  "name": "captainllama-lite",
+  "name": "captaincomfy",
   "version": "0.1.0",
-  "description": "A slim local generator for the Mac Studio: images (Z-Image Turbo) and music (ACE-Step 1.5) through a headless ComfyUI, with Gemma prompt enrichment via oMLX.",
+  "description": "CaptainComfy: images, image edits and music on the Mac Studio through a headless ComfyUI, with Gemma prompt enrichment, usable from any Mac on the tailnet.",
   "main": "./out/main/index.js",
   "author": "Adam",
   "license": "UNLICENSED",
@@ -14,7 +14,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "npm run typecheck && node --test 'scripts/**/*.test.mjs'",
     "package": "npm run build && electron-builder --mac --dir",
-    "dist": "npm run build && electron-builder --mac"
+    "dist": "npm run build && electron-builder --mac",
+    "deploy": "bash scripts/deploy.sh local",
+    "deploy:macbook": "bash scripts/deploy.sh macbook",
+    "deploy:all": "bash scripts/deploy.sh all"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -35,8 +38,8 @@
     "zustand": "^5.0.15"
   },
   "build": {
-    "appId": "com.adam.captainllama.lite",
-    "productName": "CaptainLlama Lite",
+    "appId": "com.adam.captaincomfy",
+    "productName": "CaptainComfy",
     "directories": {
       "buildResources": "build",
       "output": "dist"

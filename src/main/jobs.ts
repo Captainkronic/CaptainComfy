@@ -5,9 +5,9 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { imageGraph, musicGraph, NODE_LABELS, type ApiGraph } from '@shared/graphs'
+import { editGraph, imageGraph, musicGraph, NODE_LABELS, type ApiGraph } from '@shared/graphs'
 import { randomSeed } from '@shared/sizing'
-import type { ImageParams, Job, JobStatus, MusicParams, Output } from '@shared/types'
+import type { EditParams, ImageParams, Job, JobStatus, MusicParams, Output } from '@shared/types'
 import type { ComfyClient, ComfyEvent } from './comfy'
 import { liteOutUrl } from '@shared/net'
 import { enrich, loadModel, unloadModel } from './enrich'
@@ -28,7 +28,7 @@ export class JobManager {
   }
   list(): Job[] { return this.jobs.map((j) => ({ ...j })) }
 
-  submit(kind: 'image' | 'music', params: ImageParams | MusicParams): Job {
+  submit(kind: 'image' | 'edit' | 'music', params: ImageParams | EditParams | MusicParams): Job {
     const job: Job = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, kind, createdAt: Date.now(), status: 'queued', params, progress: null, progressLabel: 'Queued', outputs: [] }
     this.jobs.unshift(job); this.save(); this.d.emit(job); void this.pump(); return job
   }
@@ -72,6 +72,21 @@ export class JobManager {
         }
         if (job.status === 'cancelled') return
         graph = imageGraph(p, prompt, seed)
+      } else if (job.kind === 'edit') {
+        const p = job.params as EditParams
+        this.patch(job, { status: 'enriching', progressLabel: 'Uploading source image to ComfyUI', startedAt: Date.now() })
+        const up = await this.d.comfy.uploadImage(p.imagePath)
+        this.patch(job, { uploaded: up })
+        let instruction = p.instruction
+        if (p.enrich) {
+          this.patch(job, { progressLabel: 'Loading Gemma' })
+          await loadModel(host, model); gemmaUsed = true
+          this.patch(job, { progressLabel: 'Gemma is sharpening the edit instruction' })
+          const r = await enrich(host, model, 'image_edit', p.instruction); instruction = r.text
+          this.patch(job, { enriched: { prompt: r.used ? r.text : undefined }, progressLabel: r.detail })
+        }
+        if ((job.status as JobStatus) === 'cancelled') return
+        graph = editGraph(p, instruction, seed, up.subfolder ? `${up.subfolder}/${up.name}` : up.name)
       } else {
         const p = job.params as MusicParams
         let style = p.style, lyrics = p.lyrics

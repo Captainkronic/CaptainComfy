@@ -1,4 +1,4 @@
-export type Kind = 'image' | 'music'
+export type Kind = 'image' | 'edit' | 'music'
 
 export interface ImageParams {
   prompt: string
@@ -8,6 +8,16 @@ export interface ImageParams {
   count: number        // 1 .. 4
   steps: number        // 4 .. 12 (Turbo)
   seed: number | null  // null = random
+}
+
+export interface EditParams {
+  imagePath: string     // local file on the machine running the app; uploaded to ComfyUI at job time
+  imageName: string     // display name
+  instruction: string
+  enrich: boolean
+  megapixels: number    // canvas size for the edit, 0.5 .. 2.0
+  steps: number         // Klein 4B distilled: 4
+  seed: number | null
 }
 
 export interface MusicParams {
@@ -47,8 +57,10 @@ export interface Job {
   kind: Kind
   createdAt: number
   status: JobStatus
-  params: ImageParams | MusicParams
+  params: ImageParams | EditParams | MusicParams
   enriched?: { prompt?: string; style?: string; lyrics?: string }
+  /** For edit jobs: what ComfyUI stored the uploaded source as. */
+  uploaded?: { name: string; subfolder: string }
   promptId?: string
   /** 0..1 step progress inside the current node, or null when unknown (honest: no fake bars). */
   progress: number | null

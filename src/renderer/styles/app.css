@@ -42,3 +42,8 @@ audio { width: 100%; }
 .lightbox img { max-width: 94vw; max-height: 92vh; border-radius: 8px; }
 .empty { color: var(--fg-dim); padding: 40px; text-align: center; }
 .banner { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--warn); color: var(--warn); display: flex; gap: 12px; align-items: center; }
+
+.grid.two { grid-template-columns: 1fr 1fr; }
+.grid figure { margin: 0; }
+.grid figcaption { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-dim); margin-top: 6px; text-align: center; }
+.grid .pending { aspect-ratio: 1; border: 1px dashed var(--line-strong); border-radius: 8px; display: grid; place-items: center; color: var(--fg-dim); }

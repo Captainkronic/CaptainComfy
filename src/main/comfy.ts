@@ -4,7 +4,8 @@
  * own /view endpoint, so no file bytes ever pass through IPC.
  */
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { basename, extname } from 'node:path'
 import { join } from 'node:path'
 import type { ApiGraph } from '@shared/graphs'
 import type { Output } from '@shared/types'
@@ -53,6 +54,22 @@ export class ComfyClient {
       if ((await this.up()).ok) return { ok: true, detail: `started in ${Math.round((Date.now() - t0) / 1000)} s` }
     }
     return { ok: false, detail: `did not answer within ${Math.round(timeoutMs / 1000)} s` }
+  }
+
+  /** Upload a local image into ComfyUI's top-level input folder under a unique name (LoadImage
+   *  validates against that folder's listing). Works the same locally and over the tailnet. */
+  async uploadImage(path: string): Promise<{ name: string; subfolder: string }> {
+    const bytes = readFileSync(path)
+    const ext = extname(path).toLowerCase() || '.png'
+    const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png'
+    const name = `captaincomfy_${Date.now().toString(36)}_${basename(path, extname(path)).replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 40)}${ext}`
+    const form = new FormData()
+    form.append('image', new Blob([bytes], { type: mime }), name)
+    form.append('type', 'input'); form.append('overwrite', 'true')
+    const res = await fetch(`${this.base}/upload/image`, { method: 'POST', body: form, signal: AbortSignal.timeout(120_000) })
+    if (!res.ok) throw new Error(`upload failed: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`)
+    const j = (await res.json()) as { name: string; subfolder?: string }
+    return { name: j.name, subfolder: j.subfolder ?? '' }
   }
 
   async submit(graph: ApiGraph): Promise<string> {

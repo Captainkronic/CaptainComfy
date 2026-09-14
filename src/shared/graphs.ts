@@ -3,11 +3,12 @@
  * Mac Studio on 2026-09-13 (see the Easy templates in ComfyUI). Anything model-
  * specific lives here and nowhere else.
  */
-import type { ImageParams, MusicParams } from './types'
+import type { EditParams, ImageParams, MusicParams } from './types'
 import { clampSeconds, sizeFor } from './sizing'
 
 export const MODELS = {
   image: { unet: 'z_image_turbo_bf16.safetensors', clip: 'qwen_3_4b.safetensors', clipType: 'lumina2', vae: 'ae.safetensors' },
+  edit: { unet: 'flux-2-klein-4b.safetensors', clip: 'qwen_3_4b.safetensors', clipType: 'flux2', vae: 'flux2-vae.safetensors' },
   music: { ckpt: 'ace_step_1.5_turbo_aio.safetensors' }
 } as const
 
@@ -27,6 +28,35 @@ export function imageGraph(p: ImageParams, finalPrompt: string, seed: number, pr
            seed, steps: Math.min(12, Math.max(4, p.steps)), cfg: 1, sampler_name: 'res_multistep', scheduler: 'simple', denoise: 1 } },
     '9': { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
     '10': { class_type: 'SaveImage', inputs: { images: ['9', 0], filename_prefix: prefix } }
+  }
+}
+
+/** Instruction edit with FLUX.2 Klein 4B (distilled): reference latent on both positive and zeroed
+ *  negative, cfg 1, euler, Flux2Scheduler sized from the scaled source image. Same wiring as
+ *  ComfyUI's bundled image_flux2_klein_image_edit_4b_distilled template. */
+export function editGraph(p: EditParams, finalInstruction: string, seed: number, uploadedImage: string, prefix = 'lite/edit'): ApiGraph {
+  const mp = Math.min(2, Math.max(0.25, p.megapixels))
+  const steps = Math.min(12, Math.max(2, p.steps))
+  return {
+    '1': { class_type: 'UNETLoader', inputs: { unet_name: MODELS.edit.unet, weight_dtype: 'default' } },
+    '2': { class_type: 'CLIPLoader', inputs: { clip_name: MODELS.edit.clip, type: MODELS.edit.clipType, device: 'default' } },
+    '3': { class_type: 'VAELoader', inputs: { vae_name: MODELS.edit.vae } },
+    '4': { class_type: 'LoadImage', inputs: { image: uploadedImage } },
+    '5': { class_type: 'ImageScaleToTotalPixels', inputs: { image: ['4', 0], upscale_method: 'nearest-exact', megapixels: mp, resolution_steps: 1 } },
+    '6': { class_type: 'GetImageSize', inputs: { image: ['5', 0] } },
+    '7': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: finalInstruction } },
+    '8': { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['7', 0] } },
+    '9': { class_type: 'VAEEncode', inputs: { pixels: ['5', 0], vae: ['3', 0] } },
+    '10': { class_type: 'ReferenceLatent', inputs: { conditioning: ['7', 0], latent: ['9', 0] } },
+    '11': { class_type: 'ReferenceLatent', inputs: { conditioning: ['8', 0], latent: ['9', 0] } },
+    '12': { class_type: 'EmptyFlux2LatentImage', inputs: { width: ['6', 0], height: ['6', 1], batch_size: 1 } },
+    '13': { class_type: 'RandomNoise', inputs: { noise_seed: seed } },
+    '14': { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler' } },
+    '15': { class_type: 'Flux2Scheduler', inputs: { steps, width: ['6', 0], height: ['6', 1] } },
+    '16': { class_type: 'CFGGuider', inputs: { model: ['1', 0], positive: ['10', 0], negative: ['11', 0], cfg: 1 } },
+    '17': { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['13', 0], guider: ['16', 0], sampler: ['14', 0], sigmas: ['15', 0], latent_image: ['12', 0] } },
+    '18': { class_type: 'VAEDecode', inputs: { samples: ['17', 0], vae: ['3', 0] } },
+    '19': { class_type: 'SaveImage', inputs: { images: ['18', 0], filename_prefix: prefix } }
   }
 }
 
@@ -50,5 +80,5 @@ export function musicGraph(p: MusicParams, style: string, lyrics: string, seed: 
 export const NODE_LABELS: Record<string, string> = {
   UNETLoader: 'Loading image model', CLIPLoader: 'Loading text encoder', VAELoader: 'Loading VAE', CheckpointLoaderSimple: 'Loading music model',
   CLIPTextEncode: 'Encoding prompt', 'TextEncodeAceStepAudio1.5': 'Encoding song', KSampler: 'Generating', VAEDecode: 'Decoding image',
-  VAEDecodeAudio: 'Decoding audio', SaveImage: 'Saving', SaveAudioMP3: 'Saving MP3', EmptySD3LatentImage: 'Preparing canvas', 'EmptyAceStep1.5LatentAudio': 'Preparing'
+  VAEDecodeAudio: 'Decoding audio', SaveImage: 'Saving', ImageScaleToTotalPixels: 'Scaling source image', VAEEncode: 'Encoding source image', ReferenceLatent: 'Attaching reference', SamplerCustomAdvanced: 'Generating', GetImageSize: 'Reading size', Flux2Scheduler: 'Scheduling', SaveAudioMP3: 'Saving MP3', EmptySD3LatentImage: 'Preparing canvas', 'EmptyAceStep1.5LatentAudio': 'Preparing'
 }

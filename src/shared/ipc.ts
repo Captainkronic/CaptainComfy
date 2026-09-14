@@ -1,4 +1,4 @@
-import type { Health, ImageParams, Job, MusicParams, Output } from './types'
+import type { EditParams, Health, ImageParams, Job, MusicParams, Output } from './types'
 
 export interface Settings {
   comfyHost: string          // http://127.0.0.1:8188
@@ -22,9 +22,12 @@ export interface IpcApi {
   'jobs:list': () => Promise<Job[]>
   'jobs:submitImage': (p: ImageParams) => Promise<Job>
   'jobs:submitMusic': (p: MusicParams) => Promise<Job>
+  'jobs:submitEdit': (p: EditParams) => Promise<Job>
+  /** Native open dialog; returns the path plus a small data: URL preview the renderer may show. */
+  'dialog:pickImage': () => Promise<{ path: string; name: string; preview: string } | null>
   'jobs:cancel': (id: string) => Promise<void>
   'jobs:clearFinished': () => Promise<void>
-  'enrich:preview': (mode: 'image' | 'music_style' | 'music_lyrics', text: string) => Promise<{ text: string; used: boolean; detail: string }>
+  'enrich:preview': (mode: 'image' | 'image_edit' | 'music_style' | 'music_lyrics', text: string) => Promise<{ text: string; used: boolean; detail: string }>
   'shell:reveal': (output: Output) => Promise<void>
   'shell:open': (output: Output) => Promise<void>
 }
