@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, net, protocol, shell } from 'electron'
 import { pathToFileURL } from 'node:url'
-import { existsSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 import { comfyViewUrl, isLoopback, LOCAL, parseLiteOut, STUDIO } from '@shared/net'
 import { is } from '@electron-toolkit/utils'
@@ -15,6 +15,20 @@ import { SettingsStore } from './settings'
 // Results are read by the renderer through this scheme instead of ComfyUI's /view URL: a file://
 // page loading http:// images fails silently in Chromium, and files must not be exposed as file://.
 protocol.registerSchemesAsPrivileged([{ scheme: 'lite-out', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: false } }])
+
+// A packaged app has no visible stdout, so everything main logs also goes to
+// ~/Library/Logs/captainllama-lite/main.log (a few KB; overwritten per launch is not needed).
+const LOG_DIR = join(app.getPath('home'), 'Library', 'Logs', 'captainllama-lite')
+const LOG_FILE = join(LOG_DIR, 'main.log')
+try { mkdirSync(LOG_DIR, { recursive: true }) } catch { /* logging is best effort */ }
+for (const level of ['log', 'warn', 'error'] as const) {
+  const orig = console[level].bind(console)
+  console[level] = (...args: unknown[]): void => {
+    orig(...args)
+    try { appendFileSync(LOG_FILE, `${new Date().toISOString()} [${level}] ${args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}\n`) } catch { /* ignore */ }
+  }
+}
+console.log(`[lite] starting ${app.getVersion()} on ${process.platform} ${process.arch}`)
 
 let win: BrowserWindow | null = null
 function emit<K extends keyof IpcEvents>(channel: K, payload: IpcEvents[K]): void { win?.webContents.send(channel, payload) }
@@ -64,6 +78,7 @@ function createWindow(): BrowserWindow {
 }
 
 async function autoDetect(): Promise<void> {
+  console.log(`[lite] comfy=${settings.get().comfyHost} omlx=${settings.get().omlxHost}`)
   // First run on a machine with no local ComfyUI: if the Studio answers, use it and say so.
   const s = settings.get()
   if (!isLoopback(s.comfyHost)) return
