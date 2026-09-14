@@ -37,8 +37,20 @@
   "build": {
     "appId": "com.adam.captainllama.lite",
     "productName": "CaptainLlama Lite",
-    "directories": { "buildResources": "build", "output": "dist" },
-    "files": ["out/**"],
-    "mac": { "category": "public.app-category.graphics-design", "target": ["dir"] }
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "out/**"
+    ],
+    "mac": {
+      "category": "public.app-category.graphics-design",
+      "target": [
+        "dir"
+      ],
+      "identity": null,
+      "hardenedRuntime": false
+    }
   }
 }
