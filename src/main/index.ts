@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
 import { pathToFileURL } from 'node:url'
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 import { comfyViewUrl, isLoopback, LOCAL, parseLiteOut, STUDIO } from '@shared/net'
 import { is } from '@electron-toolkit/utils'
@@ -74,6 +74,20 @@ handle('jobs:clearFinished', async () => jobs.clearFinished())
 handle('enrich:preview', async (mode, text) => { const s = settings.get(); return enrich(s.omlxHost, s.omlxModel, mode, text) })
 const outputPath = (o: { subfolder: string; filename: string }): string => join(settings.get().comfyOutputDir, o.subfolder, o.filename)
 handle('shell:reveal', async (o) => shell.showItemInFolder(outputPath(o)))
+handle('output:save', async (o) => {
+  const r = await dialog.showSaveDialog({ defaultPath: join(app.getPath('downloads'), o.filename), title: 'Save result' })
+  if (r.canceled || !r.filePath) return null
+  const local = outputPath(o)
+  let bytes: Buffer
+  if (existsSync(local)) bytes = readFileSync(local)
+  else {
+    const res = await fetch(comfyViewUrl(settings.get().comfyHost, o.subfolder, o.filename, o.type), { signal: AbortSignal.timeout(120_000) })
+    if (!res.ok) throw new Error(`ComfyUI ${res.status} while fetching ${o.filename}`)
+    bytes = Buffer.from(await res.arrayBuffer())
+  }
+  writeFileSync(r.filePath, bytes); shell.showItemInFolder(r.filePath)
+  return { path: r.filePath }
+})
 handle('shell:open', async (o) => { await shell.openPath(outputPath(o)) })
 
 function createWindow(): BrowserWindow {

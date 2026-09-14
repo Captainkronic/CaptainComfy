@@ -50,7 +50,8 @@ switches itself to the Studio and logs that it did.
 
 Results are fetched by the app's main process from ComfyUI's `/view` endpoint and
 handed to the UI through `lite-out://`, so nothing needs to be mounted or shared.
-"Show in Finder" only works where the output folder actually exists (the Studio).
+Every result has **Download** (saves to a location you pick, default ~/Downloads, fetched over the
+tailnet when remote). "Show in Finder" appears only where the output folder actually exists (the Studio).
 
 **Studio side (done on 2026-09-13):** Comfy Desktop's launch args include
 `--listen 127.0.0.1,100.120.207.33`, so ComfyUI listens on loopback *and* its

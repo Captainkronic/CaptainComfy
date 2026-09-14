@@ -29,6 +29,8 @@ export interface IpcApi {
   'jobs:clearFinished': () => Promise<void>
   'enrich:preview': (mode: 'image' | 'image_edit' | 'music_style' | 'music_lyrics', text: string) => Promise<{ text: string; used: boolean; detail: string }>
   'shell:reveal': (output: Output) => Promise<void>
+  /** Save a result to a location the user picks (defaults to ~/Downloads). Works locally and over the tailnet. */
+  'output:save': (output: Output) => Promise<{ path: string } | null>
   'shell:open': (output: Output) => Promise<void>
 }
 export type IpcChannel = keyof IpcApi

@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { EditParams, ImageParams, Job, Kind, MusicParams, Output } from '@shared/types'
 import { useStore } from '../state/store'
 import { call } from '../lib'
-import { liteOutUrl } from '@shared/net'
+import { isLoopback, liteOutUrl } from '@shared/net'
 
 function elapsed(j: Job): string {
   if (!j.startedAt) return ''
@@ -11,7 +11,7 @@ function elapsed(j: Job): string {
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`
 }
 
-function Card({ job, onZoom }: { job: Job; onZoom: (o: Output) => void }): JSX.Element {
+function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; local: boolean }): JSX.Element {
   const live = job.status === 'queued' || job.status === 'enriching' || job.status === 'running'
   const params = job.params
   const summary = job.kind === 'image' ? (params as ImageParams).prompt : job.kind === 'edit' ? `${(params as EditParams).imageName}: ${(params as EditParams).instruction}` : `${(params as MusicParams).style}\n${(params as MusicParams).lyrics}`
@@ -49,7 +49,12 @@ function Card({ job, onZoom }: { job: Job; onZoom: (o: Output) => void }): JSX.E
       )}
       {job.outputs.length > 0 && (
         <div className="meta">
-          {job.outputs.map((o) => <button key={o.url} className="btn ghost" onClick={() => { void call('shell:reveal', o) }}>Show {o.filename} in Finder</button>)}
+          {job.outputs.map((o) => (
+            <span key={o.url}>
+              <button className="btn ghost" onClick={() => { void call('output:save', o) }}>⬇ Download {o.filename}</button>
+              {local && <button className="btn ghost" onClick={() => { void call('shell:reveal', o) }}>Show in Finder</button>}
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -59,6 +64,7 @@ function Card({ job, onZoom }: { job: Job; onZoom: (o: Output) => void }): JSX.E
 
 export default function JobList({ kind }: { kind: Kind }): JSX.Element {
   const jobs = useStore((s) => s.jobs).filter((j) => j.kind === kind)
+  const local = useStore((s) => (s.health ? isLoopback(s.health.comfy.host) : true))
   const [zoom, setZoom] = useState<Output | null>(null)
   return (
     <div className="results">
@@ -67,7 +73,7 @@ export default function JobList({ kind }: { kind: Kind }): JSX.Element {
         <button className="btn ghost" onClick={() => { void call('jobs:clearFinished').then(() => location.reload()) }}>Clear finished</button>
       </div>
       {jobs.length === 0 && <div className="empty">Nothing yet. Fill in the form and press Generate.</div>}
-      {jobs.map((j) => <Card key={j.id} job={j} onZoom={setZoom} />)}
+      {jobs.map((j) => <Card key={j.id} job={j} onZoom={setZoom} local={local} />)}
       {zoom && <div className="lightbox" onClick={() => setZoom(null)}><img src={zoom.url} alt="" /></div>}
     </div>
   )
