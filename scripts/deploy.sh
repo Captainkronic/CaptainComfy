@@ -28,6 +28,7 @@ build_and_install() {   # runs on whichever machine we are on
   fi
   if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then say "npm install"; npm install --no-audit --no-fund; fi
   [ -d node_modules/electron/dist/Electron.app ] || { say "fetching Electron"; node node_modules/electron/install.js; }
+  say "type-check"; npm run typecheck >/tmp/captaincomfy-typecheck.log 2>&1 || { cat /tmp/captaincomfy-typecheck.log; echo "type errors: not deploying"; exit 1; }
   say "build + package"; npm run package >/tmp/captaincomfy-package.log 2>&1 || { tail -30 /tmp/captaincomfy-package.log; exit 1; }
   say "install to ~/Applications/$APP.app"
   pkill -f "$APP.app/Contents/MacOS" 2>/dev/null || true; sleep 1
