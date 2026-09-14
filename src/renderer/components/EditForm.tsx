@@ -2,11 +2,11 @@ import type { JSX } from 'react'
 import { useState } from 'react'
 import type { EditParams } from '@shared/types'
 import { call } from '../lib'
-import { pick } from '@shared/suggestions'
+import { pick as suggest } from '@shared/suggestions'
 import Suggest from './Suggest'
 
 export default function EditForm(): JSX.Element {
-  const [p, setP] = useState<EditParams>({ imagePath: '', imageName: '', instruction: pick('edit'), enrich: true, megapixels: 1.0, steps: 4, seed: null })
+  const [p, setP] = useState<EditParams>({ imagePath: '', imageName: '', instruction: suggest('edit'), enrich: true, megapixels: 1.0, steps: 4, seed: null })
   const [preview, setPreview] = useState('')
   const [busy, setBusy] = useState(false)
   const up = <K extends keyof EditParams>(k: K, v: EditParams[K]): void => setP({ ...p, [k]: v })
