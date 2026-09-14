@@ -1,0 +1,44 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+// Transpile the TS modules on the fly with tsc into a temp dir so node --test can import them.
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+const out = mkdtempSync(join(tmpdir(), 'cll-'))
+execFileSync('npx', ['tsc', 'src/shared/types.ts', 'src/shared/sizing.ts', 'src/shared/graphs.ts', 'src/shared/enrich.ts', 'src/shared/net.ts', '--outDir', out, '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'es2022', '--skipLibCheck'], { stdio: 'inherit' })
+writeFileSync(join(out, 'package.json'), '{"type":"module"}')
+import { readdirSync, readFileSync } from 'node:fs'
+for (const f of readdirSync(out)) if (f.endsWith('.js')) writeFileSync(join(out, f), readFileSync(join(out, f), 'utf8').replace(/from '(\.\/[a-z]+)'/g, "from '$1.js'"))
+const fix = async (n) => import(join(out, n + '.js'))
+const { sizeFor, clampSeconds } = await fix('sizing')
+const { imageGraph, musicGraph } = await fix('graphs')
+const { lyricsAreFinal, cleanLLMText } = await fix('enrich')
+
+test('sizeFor snaps to 16 and honours aspect', () => {
+  const s = sizeFor('1:1', 1.0); assert.equal(s.width, 1008); assert.equal(s.height, 1008)
+  const w = sizeFor('16:9', 1.0); assert.ok(w.width > w.height); assert.equal(w.width % 16, 0); assert.equal(w.height % 16, 0)
+})
+test('clampSeconds bounds', () => { assert.equal(clampSeconds(3), 10); assert.equal(clampSeconds(999), 240); assert.equal(clampSeconds(30.4), 30) })
+test('image graph wires the proven recipe', () => {
+  const g = imageGraph({ prompt: 'x', enrich: false, aspect: '1:1', megapixels: 1, count: 2, steps: 8, seed: null }, 'final', 42)
+  assert.equal(g['8'].inputs.sampler_name, 'res_multistep'); assert.equal(g['8'].inputs.cfg, 1); assert.equal(g['7'].inputs.batch_size, 2)
+  assert.equal(g['5'].inputs.text, 'final'); assert.equal(g['8'].inputs.seed, 42)
+})
+test('music graph keeps encoder duration and latent seconds identical', () => {
+  const g = musicGraph({ style: 's', lyrics: 'l', enrich: false, seconds: 45, bpm: 100, steps: 8, seed: null }, 'tags', '[instrumental]', 7)
+  assert.equal(g['3'].inputs.duration, g['5'].inputs.seconds); assert.equal(g['6'].inputs.sampler_name, 'euler'); assert.equal(g['3'].inputs.lyrics, '[instrumental]')
+})
+test('lyrics guard', () => { assert.ok(lyricsAreFinal('[Verse]\nla')); assert.ok(lyricsAreFinal('[instrumental]')); assert.ok(!lyricsAreFinal('a song about rain')) })
+test('cleanLLMText strips preamble and quotes', () => { assert.equal(cleanLLMText('Here is your prompt: "a cat"'), 'a cat') })
+
+const { liteOutUrl, parseLiteOut, isLoopback, comfyViewUrl } = await fix('net')
+test('lite-out url round-trips and marks type', () => {
+  const u = liteOutUrl('audio/sub dir', 'a b.mp3', 'output'); const p = parseLiteOut(u)
+  assert.deepEqual(p, { subfolder: 'audio/sub dir', filename: 'a b.mp3', type: 'output' })
+  assert.equal(parseLiteOut('http://x'), null); assert.equal(parseLiteOut('lite-out://out/'), null)
+})
+test('loopback detection and view url', () => {
+  assert.ok(isLoopback('http://127.0.0.1:8188')); assert.ok(isLoopback('http://localhost:8188')); assert.ok(!isLoopback('http://adams-mac-studio.tailc7bb1e.ts.net:8188'))
+  assert.equal(comfyViewUrl('http://h:1/', 's', 'f.png', 'output'), 'http://h:1/view?filename=f.png&subfolder=s&type=output')
+})

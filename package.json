@@ -1,0 +1,44 @@
+{
+  "name": "captainllama-lite",
+  "version": "0.1.0",
+  "description": "A slim local generator for the Mac Studio: images (Z-Image Turbo) and music (ACE-Step 1.5) through a headless ComfyUI, with Gemma prompt enrichment via oMLX.",
+  "main": "./out/main/index.js",
+  "author": "Adam",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "npm run typecheck && node --test 'scripts/**/*.test.mjs'",
+    "package": "npm run build && electron-builder --mac --dir",
+    "dist": "npm run build && electron-builder --mac"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "typescript": "^5.7.3",
+    "vite": "^7.3.6",
+    "zustand": "^5.0.15"
+  },
+  "build": {
+    "appId": "com.adam.captainllama.lite",
+    "productName": "CaptainLlama Lite",
+    "directories": { "buildResources": "build", "output": "dist" },
+    "files": ["out/**"],
+    "mac": { "category": "public.app-category.graphics-design", "target": ["dir"] }
+  }
+}
