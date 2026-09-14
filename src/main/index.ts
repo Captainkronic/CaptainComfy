@@ -28,10 +28,11 @@ for (const level of ['log', 'warn', 'error'] as const) {
     try { appendFileSync(LOG_FILE, `${new Date().toISOString()} [${level}] ${args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}\n`) } catch { /* ignore */ }
   }
 }
+process.on('unhandledRejection', (r) => console.error('[lite] unhandled rejection: ' + (r instanceof Error ? r.stack ?? r.message : String(r))))
 console.log(`[lite] starting ${app.getVersion()} on ${process.platform} ${process.arch}`)
 
 let win: BrowserWindow | null = null
-function emit<K extends keyof IpcEvents>(channel: K, payload: IpcEvents[K]): void { win?.webContents.send(channel, payload) }
+function emit<K extends keyof IpcEvents>(channel: K, payload: IpcEvents[K]): void { if (win && !win.isDestroyed()) win.webContents.send(channel, payload) }
 
 // One-time migration from the app's previous name.
 for (const f of ['settings.json', 'jobs.json']) {

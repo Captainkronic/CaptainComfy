@@ -120,11 +120,19 @@ export class JobManager {
   private watch(job: Job, promptId: string, graph: ApiGraph): Promise<void> {
     return new Promise((resolve) => {
       let settled = false
+      let eventError: string | null = null
       const finish = async (): Promise<void> => {
         if (settled) return; settled = true; off(); clearInterval(poll)
-        const r: { outputs: Output[]; status?: string; error?: string } = await this.d.comfy.outputs(promptId).catch(() => ({ outputs: [], error: 'could not read history' }))
+        // ComfyUI emits the finishing event a beat before it writes history; wait for history to exist.
+        let r: { outputs: Output[]; status?: string; error?: string } = { outputs: [] }
+        for (let i = 0; i < 20; i++) {
+          r = await this.d.comfy.outputs(promptId).catch(() => ({ outputs: [], error: 'could not read history' }))
+          if (r.status) break
+          await new Promise((res) => setTimeout(res, 500))
+        }
         if (job.status === 'cancelled') { resolve(); return }
-        if (r.error || (r.status === 'error')) this.patch(job, { status: 'failed', error: r.error ?? 'ComfyUI reported an error', progressLabel: 'Failed', finishedAt: Date.now(), outputs: r.outputs })
+        const err = eventError ?? r.error ?? (r.status === 'error' ? 'ComfyUI reported an error' : r.status ? null : 'ComfyUI never wrote a result for this job')
+        if (err) this.patch(job, { status: 'failed', error: err, progressLabel: 'Failed', finishedAt: Date.now(), outputs: r.outputs })
         else this.patch(job, { status: 'done', progress: 1, progressLabel: 'Done', finishedAt: Date.now(), outputs: r.outputs })
         resolve()
       }
@@ -139,9 +147,11 @@ export class JobManager {
         } else if (e.type === 'progress') {
           const v = Number(d['value']), m = Number(d['max'])
           if (m > 0) this.patch(job, { progress: v / m, progressLabel: `Generating  ${v}/${m} steps` })
-        } else if (e.type === 'execution_success' || e.type === 'execution_error' || e.type === 'execution_interrupted') { void finish() }
+        } else if (e.type === 'execution_error') {
+          eventError = `${String(d['node_type'] ?? '')}: ${String(d['exception_message'] ?? 'error')}`.trim(); void finish()
+        } else if (e.type === 'execution_interrupted') { eventError = 'interrupted'; void finish() }
+        else if (e.type === 'execution_success') { void finish() }
       })
-      // Belt and braces: if the socket misses the end, history still knows.
       const poll = setInterval(() => { void this.d.comfy.outputs(promptId).then((r) => { if (r.status) void finish() }).catch(() => undefined) }, 15_000)
     })
   }
