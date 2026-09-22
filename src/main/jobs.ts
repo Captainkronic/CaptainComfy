@@ -369,13 +369,16 @@ export class JobManager {
         else if (e.type === 'execution_success') { void finish() }
       })
       // Belt and braces every 15 s: history done -> finish; prompt gone from queue AND history
-      // (ComfyUI restarted or was killed) -> LOST instead of waiting forever.
+      // (ComfyUI restarted or was killed) -> LOST instead of waiting forever. ComfyUI unreachable for
+      // three polls in a row (killed under this prompt) is LOST too, so the job re-queues and restarts it.
+      let unreachable = 0
       const poll = setInterval(() => {
         void (async () => {
           const r = await this.d.comfy.outputs(promptId).catch(() => null)
           if (r?.status) { void finish(); return }
           const q = await this.d.comfy.queued(promptId).catch(() => null)
-          if (q === false && r && !r.status) { eventError = LOST; void finish() }
+          if (q === false && r && !r.status) { eventError = LOST; void finish(); return }
+          if (r === null && q === null) { if (++unreachable >= 3) { eventError = LOST; void finish() } } else unreachable = 0
         })()
       }, 15_000)
     })

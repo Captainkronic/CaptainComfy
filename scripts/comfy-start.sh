@@ -14,6 +14,13 @@ if up; then echo "already running"; exit 0; fi
 # port was taken, or a leftover) would load a second 20 GB copy of the weights; 36 GB cannot hold two.
 for p in $(pgrep -f "python.*main\.py"); do
   ps -o command= -p "$p" | grep -q "ComfyUI" || continue
+  # A backend younger than two minutes is most likely one we (or a parallel caller) just started and
+  # still booting: wait for it rather than kill it.
+  age=$(ps -o etimes= -p "$p" 2>/dev/null | tr -d " ")
+  if [ "${age:-999}" -lt 120 ]; then
+    echo "a ComfyUI started ${age}s ago is still booting; waiting for it"
+    for i in $(seq 1 40); do sleep 3; if up; then echo "already running"; exit 0; fi; done
+  fi
   echo "stopping duplicate ComfyUI $p"; kill "$p" 2>/dev/null
 done
 # After a memory-guard kill the kernel needs a moment to reclaim the dead process and its swap; a cold

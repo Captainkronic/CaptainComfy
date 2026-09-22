@@ -72,7 +72,14 @@ async function remoteStart(): Promise<{ ok: boolean; detail: string }> {
   console.log(`[lite] remote start result: ${JSON.stringify(out)}`)
   return out
 }
-async function startComfy(): Promise<{ ok: boolean; detail: string }> { const s = settings.get(); if (!isLoopback(s.comfyHost)) return remoteStart(); return comfy.start({ dir: s.comfyDir, yaml: s.comfyModelPathsYaml, input: s.comfyInputDir, output: s.comfyOutputDir, flags: s.comfyFlags }) }
+let starting: Promise<{ ok: boolean; detail: string }> | null = null
+/** One start at a time: a waiting job and the health check may both ask within seconds. */
+function startComfy(): Promise<{ ok: boolean; detail: string }> {
+  if (starting) return starting
+  const s = settings.get()
+  starting = (isLoopback(s.comfyHost) ? comfy.start({ dir: s.comfyDir, yaml: s.comfyModelPathsYaml, input: s.comfyInputDir, output: s.comfyOutputDir, flags: s.comfyFlags }) : remoteStart()).finally(() => { starting = null })
+  return starting
+}
 handle('comfy:start', async () => startComfy())
 handle('comfy:warm', async (what, prompt) => jobs.warm(what, prompt))
 handle('jobs:list', async () => jobs.list())
@@ -193,7 +200,20 @@ void app.whenReady().then(async () => {
   const shot = process.env['CAPTAINCOMFY_SHOT']
   if (shot) setTimeout(() => { void (async () => { try { const tab = process.env['CAPTAINCOMFY_TAB']; if (tab) { await win?.webContents.executeJavaScript(`document.querySelector('.tab[data-tab="${tab}"]')?.click()`) } await new Promise((r) => setTimeout(r, Number(process.env['CAPTAINCOMFY_SHOT_DELAY'] ?? 800))); const img = await win?.webContents.capturePage(); if (img) writeFileSync(shot, img.toPNG()); console.log(`[shot] wrote ${shot}`) } catch (e) { console.log('[shot] failed ' + String(e)) } app.quit() })() }, 3500)
   if (process.env['LITE_PROBE']) setTimeout(() => { void win?.webContents.executeJavaScript("(() => { const imgs=[...document.querySelectorAll('.grid img')]; return JSON.stringify({ cards: document.querySelectorAll('.card').length, grids: document.querySelectorAll('.grid').length, imgs: imgs.map(i => ({ src: i.src.slice(0, 80), complete: i.complete, w: i.naturalWidth, h: i.naturalHeight, box: i.getBoundingClientRect().width + 'x' + i.getBoundingClientRect().height })) }) })()").then((r) => console.log('[probe] ' + String(r))).catch((e) => console.log('[probe] failed ' + String(e))) }, 6000)
-  setInterval(() => { void health().then((h) => emit('event:health', h)); jobs.watchdog() }, 10_000)
+  // Self-repair: ComfyUI down for two health checks in a row is started again (the Start button's path;
+  // comfy-start removes duplicates and waits for memory to settle), at most once every three minutes.
+  let comfyDownChecks = 0, lastAutoStart = 0
+  setInterval(() => {
+    void health().then((h) => {
+      emit('event:health', h)
+      comfyDownChecks = h.comfy.up ? 0 : comfyDownChecks + 1
+      if (comfyDownChecks >= 2 && settings.get().autoRestartComfy && Date.now() - lastAutoStart > 3 * 60_000) {
+        lastAutoStart = Date.now(); console.log('[lite] ComfyUI has been down for 20 s; starting it')
+        void startComfy().then((r) => console.log(`[lite] self-repair start of ComfyUI: ${JSON.stringify(r)}`))
+      }
+    })
+    jobs.watchdog()
+  }, 10_000)
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) win = createWindow() })
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
