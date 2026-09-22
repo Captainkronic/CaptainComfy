@@ -1,10 +1,47 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import type { EditParams, ImageParams, Job, Kind, MusicParams, Output } from '@shared/types'
-import type { CardParams, LetteringReport } from '@shared/card'
+import { CARD_QUALITY, CARD_SHAPES, cardQualityKey, cardSize, type CardParams, type LetteringReport } from '@shared/card'
+import { IMAGE_QUALITY, imageQualityOf, sizeFor } from '@shared/sizing'
 import { useStore } from '../state/store'
 import { call } from '../lib'
 import { isLoopback, liteOutUrl } from '@shared/net'
+
+/** Everything that decided the result, in one line: the quality preset by name (or the numbers when set
+ *  by hand), the output size, steps, seed, candidates, upscale, Gemma. Old jobs may lack some fields. */
+function settingsOf(job: Job): { preset: string; items: string[] } {
+  const items: string[] = []
+  if (job.kind === 'image') {
+    const p = job.params as ImageParams; const q = imageQualityOf(p); const size = sizeFor(p.aspect, p.megapixels, 16); const up = p.upscale ?? 1
+    const preset = q ? IMAGE_QUALITY[q].label : `custom: ${p.megapixels} MP, ${p.steps} steps${up > 1 ? `, ${up}x upscale` : ''}`
+    items.push(`${p.aspect} ${size.width}x${size.height}${up > 1 ? ` → ${size.width * up}x${size.height * up}` : ''}`, `${p.steps} steps`)
+    if (p.count > 1) items.push(`${p.count} candidates`)
+    items.push(p.enrich ? 'Gemma rewrote the prompt' : 'prompt as written')
+    return { preset, items }
+  }
+  if (job.kind === 'card') {
+    const p = job.params as CardParams; const qk = cardQualityKey(p.quality); const q = CARD_QUALITY[qk]; const size = cardSize(p.shape, qk)
+    items.push(`${CARD_SHAPES[p.shape].label} ${size.width}x${size.height}${q.upscale > 1 ? ` → ${size.width * q.upscale}x${size.height * q.upscale}` : ''}`, `${q.steps} steps`)
+    if (p.count > 1) items.push(`${p.count} candidates`)
+    items.push(`attempt ${p.attempt} of ${p.attempts}`, p.verify ? 'lettering read by OCR' : 'no OCR')
+    return { preset: q.label, items }
+  }
+  if (job.kind === 'edit') { const p = job.params as EditParams; return { preset: 'FLUX.2 Klein edit', items: [`${p.megapixels} MP canvas`, `${p.steps} steps`, p.enrich ? 'Gemma sharpened the instruction' : 'instruction as written'] } }
+  const p = job.params as MusicParams
+  return { preset: 'ACE-Step', items: [`${p.seconds} s`, `${p.bpm} bpm`, `${p.steps} steps`, p.enrich ? 'Gemma expanded style and lyrics' : 'as written'] }
+}
+
+function Settings({ job }: { job: Job }): JSX.Element {
+  const { preset, items } = settingsOf(job)
+  return (
+    <div className="settings">
+      <b>{preset}</b>
+      {items.map((t) => <span key={t}>{t}</span>)}
+      {job.seed !== undefined && <span>seed {job.seed}</span>}
+      {(job.retries ?? 0) > 0 && <span>re-run after a ComfyUI restart</span>}
+    </div>
+  )
+}
 
 function elapsed(j: Job): string {
   if (!j.startedAt) return ''
@@ -47,11 +84,12 @@ function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; l
       <div className="head">
         <span className={`badge ${job.status}`}>{job.status}</span>
         <span className="prompt" style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{summary}</span>
-        {card && <span className="meta">attempt {card.attempt} of {card.attempts}{job.seed !== undefined ? ` · seed ${job.seed}` : ''}</span>}
         <span className="meta">{elapsed(job)}</span>
         {live && <button className="btn ghost" onClick={() => { void call('jobs:cancel', job.id) }}>Cancel</button>}
       </div>
-      {card && <details className="prompt-preview"><summary>Prompt</summary><div className="enriched">{card.prompt}</div></details>}
+      <Settings job={job} />
+      {card && <details className="prompt-preview"><summary>Prompt as sent</summary><div className="enriched">{card.prompt}</div></details>}
+      {job.kind === 'image' && <details className="prompt-preview"><summary>Prompt as typed</summary><div className="enriched">{(params as ImageParams).prompt}</div></details>}
       {live && (
         <>
           <div className={`bar ${job.progress === null ? 'indeterminate' : ''}`}><i style={job.progress === null ? undefined : { width: `${Math.round(job.progress * 100)}%` }} /></div>
