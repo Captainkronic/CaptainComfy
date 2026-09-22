@@ -26,7 +26,7 @@ export interface IpcApi {
   'settings:presets': () => Promise<{ local: { comfyHost: string; omlxHost: string }; studio: { comfyHost: string; omlxHost: string } }>
   'comfy:start': () => Promise<{ ok: boolean; detail: string }>
   /** Pre-load the Z-Image weights while the user is still filling in a card (idle only, debounced). */
-  'comfy:warm': (what: 'zimage' | 'gemma') => Promise<{ ok: boolean; detail: string }>
+  'comfy:warm': (what: 'zimage' | 'gemma', prompt?: string) => Promise<{ ok: boolean; detail: string }>
   'jobs:list': () => Promise<Job[]>
   'jobs:submitImage': (p: ImageParams) => Promise<Job>
   'jobs:submitMusic': (p: MusicParams) => Promise<Job>

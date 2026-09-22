@@ -124,6 +124,16 @@ ComfyUI 0.35's default RAM-pressure cache evicts by itself when memory gets tigh
 - **Step presets** on the Card tab: `standard` and `final` keep the model's 8-step recipe; `quick`
   (6 steps, 40 s warm) and `draft` (4 steps, 28 s) are there for iterating; `final` (1072x1504) is 91 s warm. In the test renders the
   lettering held at both, but four samples are not proof, so 8 steps stays the default.
+- The warm-up carries the card's own prompt, so its text encoding is cached and the real render
+  starts sampling within a couple of seconds.
+- **Measured and rejected** on the M4 Max (2026-09-22), so nobody has to try them again:
+  `--use-pytorch-cross-attention` (8.4 s/step instead of 6.4, and its full attention matrix pushed
+  available RAM under 2 GB, so the memory guard killed ComfyUI; the default sub-quadratic attention
+  is the right one on MPS), `--fp16-unet` (7.4 s/step: bf16 is native here and the weights are
+  bf16), `--fp16-vae` (saves ~1 s of decode, not worth the black-image caveat), `--disable-mmap`
+  (53 s to step 1 cold, no better than mmap), `TorchCompileModel` (inductor's Metal backend cannot
+  find its own `c10/metal/utils.h` on this torch build), and batching candidates (each image costs
+  its full sampling time on MPS; only the load is shared). torch is 2.12.1 already.
 - Card renders use no Gemma at job time; a scene drafted in the form leaves Gemma resident, and the
   job pump releases it before submitting anyway (`gemmaResident()` in `src/main/enrich.ts`).
 - Gemma as configured (`gemma-4-26b-a4b-it-6bit`, 21 GB) cannot share the machine with Z-Image

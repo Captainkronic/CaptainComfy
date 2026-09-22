@@ -15,7 +15,7 @@ export default function CardForm(): JSX.Element {
   useEffect(() => { void call('ocr:status').then(setOcr) }, [])
   // Load ahead of the click: Gemma when the scene is still empty (a draft is likely next), the
   // Z-Image weights once a scene is in place (a render is likely next).
-  const warm = (): void => { void call('comfy:warm', d.scene.trim() ? 'zimage' : 'gemma') }
+  const warm = (): void => { void (d.scene.trim() ? call('comfy:warm', 'zimage', d.promptOverride.trim() || cardPrompt(d)) : call('comfy:warm', 'gemma')) }
   useEffect(warm, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const lines = topLines(d)
@@ -36,7 +36,7 @@ export default function CardForm(): JSX.Element {
   }
   const draftScene = async (): Promise<void> => {
     setDrafting('Gemma is drafting the scene…')
-    try { const r = await call('enrich:preview', 'card_scene', sceneRequest(d)); if (r.used) { up({ scene: r.text }); void call('comfy:warm', 'zimage') } setDrafting(r.detail) } finally { setTimeout(() => setDrafting(''), 4000) }
+    try { const r = await call('enrich:preview', 'card_scene', sceneRequest(d)); if (r.used) { up({ scene: r.text }); void call('comfy:warm', 'zimage', d.promptOverride.trim() || cardPrompt({ ...d, scene: r.text })) } setDrafting(r.detail) } finally { setTimeout(() => setDrafting(''), 4000) }
   }
   const submit = async (): Promise<void> => {
     if (!canSubmit) return
@@ -58,7 +58,7 @@ export default function CardForm(): JSX.Element {
       <div className="field"><label>Bottom line</label><input value={d.bottom} onChange={(e) => up({ bottom: e.target.value })} placeholder="From, The Sutins" />
         <div className="hint">Sign-off on a plain banner. Mixed case is fine here; leave empty for none.</div></div>
       <div className="field"><div className="label-row"><label htmlFor="card-scene">Scene</label><button type="button" className="btn ghost suggest" disabled={!!drafting} onClick={() => { void draftScene() }}>{drafting ? '…' : '✎ Draft with Gemma'}</button></div>
-        <textarea id="card-scene" value={d.scene} onChange={(e) => up({ scene: e.target.value })} onBlur={() => { if (d.scene.trim()) void call('comfy:warm', 'zimage') }} placeholder="Five or six sentences: the biggest thing in the picture first, then each supporting thing with its position, colour and size, faces spelled out, ground and background last." />
+        <textarea id="card-scene" value={d.scene} onChange={(e) => up({ scene: e.target.value })} onBlur={warm} placeholder="Five or six sentences: the biggest thing in the picture first, then each supporting thing with its position, colour and size, faces spelled out, ground and background last." />
         <div className="hint">{drafting || 'The picture between the title and the sign-off. Gemma drafts it from the fields above (the lettering is never given to Gemma); edit freely.'}</div>
       </div>
       <div className="row">

@@ -47,8 +47,9 @@ export function cardGraph(p: CardParams, seed: number, prefix = 'lite/card'): Ap
 /** A 1-step 256x256 render that only exists to load the Z-Image weights while the user is still
  *  typing; PreviewImage keeps it out of the output folder. Identical every time, so once the node
  *  cache holds it ComfyUI answers from cache in a moment. */
-export function warmupGraph(): ApiGraph {
-  const g = zImageGraph({ prompt: 'warm up', width: 256, height: 256, batch: 1, steps: 1, seed: 1, prefix: 'lite/warmup' })
+export function warmupGraph(prompt = 'warm up'): ApiGraph {
+  // With the card's own prompt, the text encoding is cached too and the real render skips it.
+  const g = zImageGraph({ prompt, width: 256, height: 256, batch: 1, steps: 1, seed: 1, prefix: 'lite/warmup' })
   g['10'] = { class_type: 'PreviewImage', inputs: { images: ['9', 0] } }
   return g
 }

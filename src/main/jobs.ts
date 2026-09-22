@@ -91,10 +91,10 @@ export class JobManager {
     await loadModel(host, model)
   }
 
-  private lastWarm = 0
+  private lastWarm = { at: 0, prompt: '' }
   /** Load the Z-Image weights now, ahead of a card the user is still writing. Idle only: a queued job
    *  warms the model itself. Cheap when already warm (ComfyUI answers the identical prompt from cache). */
-  async warm(what: 'zimage' | 'gemma'): Promise<{ ok: boolean; detail: string }> {
+  async warm(what: 'zimage' | 'gemma', prompt = ''): Promise<{ ok: boolean; detail: string }> {
     if (this.running) return { ok: false, detail: 'a job is running' }
     const { host, model, release } = this.d.omlx()
     if (what === 'gemma') {
@@ -102,12 +102,12 @@ export class JobManager {
       if (await gemmaLoaded(host, model)) return { ok: true, detail: 'Gemma is loaded' }
       await this.loadGemma(host, model); console.log('[lite] Gemma pre-loaded for a draft'); return { ok: true, detail: 'Gemma loaded' }
     }
-    if (Date.now() - this.lastWarm < 60_000) return { ok: true, detail: 'warmed recently' }
-    this.lastWarm = Date.now()
+    if (Date.now() - this.lastWarm.at < 60_000 && this.lastWarm.prompt === prompt) return { ok: true, detail: 'warmed recently' }
+    this.lastWarm = { at: Date.now(), prompt }
     if (release && await gemmaLoaded(host, model)) await unloadModel(host, model)   // never beside a 21 GB Gemma
     if (this.lastFamily && this.lastFamily !== 'zimage') await this.d.comfy.free()
     this.lastFamily = 'zimage'
-    try { await this.d.comfy.submit(warmupGraph()); console.log('[lite] warm-up submitted'); return { ok: true, detail: 'warming Z-Image' } } catch (err) { return { ok: false, detail: err instanceof Error ? err.message : String(err) } }
+    try { await this.d.comfy.submit(warmupGraph(prompt || undefined)); console.log(`[lite] warm-up submitted${prompt ? ' with the card prompt' : ''}`); return { ok: true, detail: 'warming Z-Image' } } catch (err) { return { ok: false, detail: err instanceof Error ? err.message : String(err) } }
   }
 
   private async pump(): Promise<void> {

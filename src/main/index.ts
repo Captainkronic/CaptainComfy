@@ -73,7 +73,7 @@ async function remoteStart(): Promise<{ ok: boolean; detail: string }> {
   return out
 }
 handle('comfy:start', async () => { const s = settings.get(); if (!isLoopback(s.comfyHost)) return remoteStart(); return comfy.start({ dir: s.comfyDir, yaml: s.comfyModelPathsYaml, input: s.comfyInputDir, output: s.comfyOutputDir, flags: s.comfyFlags }) })
-handle('comfy:warm', async (what) => jobs.warm(what))
+handle('comfy:warm', async (what, prompt) => jobs.warm(what, prompt))
 handle('jobs:list', async () => jobs.list())
 handle('jobs:submitImage', async (p) => jobs.submit('image', p))
 handle('jobs:submitMusic', async (p) => jobs.submit('music', p))
