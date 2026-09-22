@@ -32,7 +32,7 @@ export interface JobDeps {
   autoRestart: () => boolean
 }
 
-const MIN_FREE_GB = 10
+const MIN_FREE_GB = 3.5   // a warm render on the 36 GB Studio runs at 4.7-5.9 GB free (pressure level 1, measured 2026-09-22)
 const MAX_RETRIES = 2
 /** Sampling above this per image has killed ComfyUI on the 36 GB Studio; Print adds pixels by upscaling instead. */
 const MAX_SAMPLE_MP = 1.6
@@ -288,6 +288,9 @@ export class JobManager {
       await new Promise((r) => setTimeout(r, 5000)); this.lastActivity = Date.now()
     }
     this.lastFamily = null   // a fresh ComfyUI holds nothing
+    // A fresh ComfyUI after a kill: let the host's memory settle before the cold load (see comfy-start.sh).
+    this.patch(job, { progressLabel: `${tag}ComfyUI is back; letting memory settle` })
+    for (let i = 0; i < 20; i++) { const free = await this.d.comfy.freeRamGb(); if (free === null || free >= 22) break; await new Promise((r) => setTimeout(r, 3000)) }
     return true
   }
 
