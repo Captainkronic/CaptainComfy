@@ -33,7 +33,10 @@ export function zImageGraph(o: { prompt: string; width: number; height: number; 
     '7': { class_type: 'EmptySD3LatentImage', inputs: { width: o.width, height: o.height, batch_size: Math.min(4, Math.max(1, o.batch)) } },
     '8': { class_type: 'KSampler', inputs: { model: ['4', 0], positive: ['5', 0], negative: ['6', 0], latent_image: ['7', 0],
            seed: o.seed, steps: Math.min(12, Math.max(1, o.steps)), cfg: 1, sampler_name: 'res_multistep', scheduler: 'simple', denoise: 1 } },
-    '9': { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
+    // Tiled decode: a plain VAEDecode of two 1 MP images (or one 2 MP image) needs more memory than the
+    // 36 GB Studio has left beside the resident UNet; ComfyUI then unloads half the UNet to CPU copies
+    // and the kernel hits critical pressure (three guard kills on 2026-09-22). Tiles bound the decode.
+    '9': { class_type: 'VAEDecodeTiled', inputs: { samples: ['8', 0], vae: ['3', 0], tile_size: 512, overlap: 64, temporal_size: 64, temporal_overlap: 8 } },
     '10': { class_type: 'SaveImage', inputs: { images: ['9', 0], filename_prefix: o.prefix } }
   }
   if (up > 1) {
@@ -120,6 +123,6 @@ export function musicGraph(p: MusicParams, style: string, lyrics: string, seed: 
 /** Human labels for the nodes we report progress on. Honest: unknown nodes show their class name. */
 export const NODE_LABELS: Record<string, string> = {
   UNETLoader: 'Loading image model', CLIPLoader: 'Loading text encoder', VAELoader: 'Loading VAE', CheckpointLoaderSimple: 'Loading music model',
-  CLIPTextEncode: 'Encoding prompt', 'TextEncodeAceStepAudio1.5': 'Encoding song', KSampler: 'Generating', VAEDecode: 'Decoding image',
+  CLIPTextEncode: 'Encoding prompt', 'TextEncodeAceStepAudio1.5': 'Encoding song', KSampler: 'Generating', VAEDecode: 'Decoding image', VAEDecodeTiled: 'Decoding image',
   VAEDecodeAudio: 'Decoding audio', SaveImage: 'Saving', ImageScaleToTotalPixels: 'Scaling source image', VAEEncode: 'Encoding source image', ReferenceLatent: 'Attaching reference', SamplerCustomAdvanced: 'Generating', GetImageSize: 'Reading size', Flux2Scheduler: 'Scheduling', SaveAudioMP3: 'Saving MP3', EmptySD3LatentImage: 'Preparing canvas', 'EmptyAceStep1.5LatentAudio': 'Preparing', UpscaleModelLoader: 'Loading the upscaler', ImageUpscaleWithModel: 'Upscaling', ImageScaleBy: 'Resizing'
 }

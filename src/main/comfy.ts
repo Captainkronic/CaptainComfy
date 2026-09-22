@@ -83,6 +83,11 @@ export class ComfyClient {
     return j.prompt_id
   }
 
+  /** Free RAM on the ComfyUI host in GB (what its own model management goes by), or null when unreachable. */
+  async freeRamGb(): Promise<number | null> {
+    try { const j = (await (await fetch(`${this.base}/system_stats`, { signal: AbortSignal.timeout(4000) })).json()) as { system?: { ram_free?: number } }; return j.system?.ram_free ? j.system.ram_free / 2 ** 30 : null } catch { return null }
+  }
+
   /** Drop resident models and the node cache. ComfyUI acts on the flags at once when idle; the short
    *  wait keeps the next submit from racing ahead of it. */
   async free(): Promise<void> {

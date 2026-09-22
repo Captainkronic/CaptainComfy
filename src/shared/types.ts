@@ -70,6 +70,8 @@ export interface Job {
   /** For card jobs: one OCR report per output, in output order, once the lettering has been read. */
   lettering?: LetteringReport[]
   promptId?: string
+  /** Times this job was re-queued after ComfyUI was restarted or killed under it. */
+  retries?: number
   /** 0..1 step progress inside the current node, or null when unknown (honest: no fake bars). */
   progress: number | null
   progressLabel: string
