@@ -11,13 +11,18 @@ writeFileSync(join(out, 'package.json'), '{"type":"module"}')
 import { readdirSync, readFileSync } from 'node:fs'
 for (const f of readdirSync(out)) if (f.endsWith('.js')) writeFileSync(join(out, f), readFileSync(join(out, f), 'utf8').replace(/from '(\.\/[a-z]+)'/g, "from '$1.js'"))
 const fix = async (n) => import(join(out, n + '.js'))
-const { sizeFor, clampSeconds } = await fix('sizing')
+const { sizeFor, clampSeconds, IMAGE_QUALITY, imageQualityOf } = await fix('sizing')
 const { imageGraph, musicGraph, editGraph } = await fix('graphs')
 const { lyricsAreFinal, cleanLLMText, normalizeStyleTags, musicStyleBrief } = await fix('enrich')
 
 test('sizeFor snaps to 16 and honours aspect', () => {
   const s = sizeFor('1:1', 1.0); assert.equal(s.width, 1008); assert.equal(s.height, 1008)
   const w = sizeFor('16:9', 1.0); assert.ok(w.width > w.height); assert.equal(w.width % 16, 0); assert.equal(w.height % 16, 0)
+})
+test('image quality presets round-trip and balanced is the recipe', () => {
+  assert.equal(IMAGE_QUALITY.balanced.steps, 8); assert.equal(IMAGE_QUALITY.balanced.megapixels, 1)
+  for (const k of Object.keys(IMAGE_QUALITY)) assert.equal(imageQualityOf(IMAGE_QUALITY[k]), k)
+  assert.equal(imageQualityOf({ megapixels: 1, steps: 7 }), null)
 })
 test('clampSeconds bounds', () => { assert.equal(clampSeconds(3), 10); assert.equal(clampSeconds(999), 240); assert.equal(clampSeconds(30.4), 30) })
 test('image graph wires the proven recipe', () => {
@@ -70,14 +75,15 @@ test('music ideas carry a tempo that fits their genre', () => {
   for (const m of dnb) assert.ok(m.bpm >= 170 && m.bpm <= 176, `${m.text} @ ${m.bpm}`)
 })
 
-const { cardSize, cardPrompt, draftToParams, defaultDraft, expectedLettering, checkLettering, letterDifferences, foldLookalikes, lookForAge, wordCount } = await fix('card')
+const { cardSize, cardPrompt, cardQualityKey, draftToParams, defaultDraft, expectedLettering, checkLettering, letterDifferences, foldLookalikes, lookForAge, wordCount } = await fix('card')
 const { cardGraph, modelFamily, warmupGraph } = await fix('graphs')
 const line = (text, y = 0.05, conf = 1) => ({ text, confidence: conf, x: 0.2, y, w: 0.6, h: 0.06 })
 
 test('card sizes equal the presets tested in Card-Generator', () => {
-  assert.deepEqual(cardSize('portrait', 'standard'), { width: 880, height: 1232 }); assert.deepEqual(cardSize('landscape', 'standard'), { width: 1232, height: 880 })
-  assert.deepEqual(cardSize('portrait', 'final'), { width: 1072, height: 1504 }); assert.deepEqual(cardSize('square', 'standard'), { width: 1056, height: 1056 })
-  assert.deepEqual(cardSize('photo-portrait', 'standard'), { width: 864, height: 1296 }); assert.deepEqual(cardSize('a-landscape', 'final'), { width: 1488, height: 1056 })
+  assert.deepEqual(cardSize('portrait', 'balanced'), { width: 880, height: 1232 }); assert.deepEqual(cardSize('landscape', 'balanced'), { width: 1232, height: 880 })
+  assert.deepEqual(cardSize('portrait', 'high'), { width: 1072, height: 1504 }); assert.deepEqual(cardSize('square', 'balanced'), { width: 1056, height: 1056 })
+  assert.deepEqual(cardSize('photo-portrait', 'standard'), { width: 864, height: 1296 }); assert.deepEqual(cardSize('a-landscape', 'final'), { width: 1488, height: 1056 })   // legacy keys still resolve
+  assert.equal(cardQualityKey('quick'), 'fast'); assert.equal(cardQualityKey('final'), 'high'); assert.equal(cardQualityKey('standard'), 'balanced'); assert.equal(cardQualityKey('draft'), 'draft'); assert.equal(cardQualityKey('nonsense'), 'balanced')
 })
 test('card prompt follows the skeleton and carries the lettering verbatim', () => {
   const d = { ...defaultDraft(), recipient: 'Nicholas', age: 4, lines: 'Happy 4th Birthday\nNicholas!', bottom: 'From, The Sutins', scene: 'A big red airplane flies through the sky.' }
@@ -96,18 +102,18 @@ test('card prompt follows the skeleton and carries the lettering verbatim', () =
   assert.equal(draftToParams({ ...d, promptOverride: 'custom' }, 's1').prompt, 'custom')
 })
 test('card graph uses the tested recipe at card size, candidates as one batch', () => {
-  const g = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'standard', count: 3, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 4040)
+  const g = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'balanced', count: 3, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 4040)
   assert.equal(g['7'].inputs.width, 880); assert.equal(g['7'].inputs.height, 1232); assert.equal(g['7'].inputs.batch_size, 3)
   assert.equal(g['8'].inputs.steps, 8); assert.equal(g['8'].inputs.sampler_name, 'res_multistep'); assert.equal(g['8'].inputs.seed, 4040); assert.equal(g['5'].inputs.text, 'p')
-  const q = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'quick', count: 1, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 1)
+  const q = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'fast', count: 1, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 1)
   assert.equal(q['8'].inputs.steps, 6); assert.equal(q['7'].inputs.width, 880)
-  const f = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'final', count: 1, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 1)
+  const f = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'high', count: 1, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 1)
   assert.equal(f['8'].inputs.steps, 8); assert.equal(f['7'].inputs.width, 1072)
   assert.equal(modelFamily('card'), modelFamily('image')); assert.notEqual(modelFamily('card'), modelFamily('music'))
   assert.equal(lookForAge(3), 'flat'); assert.equal(lookForAge(8), 'gouache'); assert.equal(lookForAge(40), 'screen'); assert.equal(lookForAge(null), 'riso')
 })
 test('warm-up graph loads the same weights, tiny, and keeps its output out of the output folder', () => {
-  const w = warmupGraph(), g = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'standard', count: 1, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 1)
+  const w = warmupGraph(), g = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'balanced', count: 1, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 1)
   assert.deepEqual(w['1'], g['1']); assert.deepEqual(w['2'], g['2']); assert.deepEqual(w['3'], g['3'])
   assert.equal(w['7'].inputs.width, 256); assert.equal(w['8'].inputs.steps, 1); assert.equal(w['10'].class_type, 'PreviewImage')
 })

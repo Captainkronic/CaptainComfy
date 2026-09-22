@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { CARD_ATTEMPTS_MAX, CARD_QUALITY, CARD_SHAPES, cardPrompt, cardSize, draftToParams, LINE_MAX, LOOKS, lookForAge, PROMPT_WORDS_MAX, sceneRequest, topLines, wordCount, type CardQuality, type CardShape, type LookKey } from '@shared/card'
 import { call } from '../lib'
 import { useStore } from '../state/store'
+import Segmented from './Segmented'
 
 /** The Card-Generator brief as a form. The prompt is assembled in the guide's order and shown in full;
  *  Gemma drafts only the scene paragraph, here, where it can be read and edited before anything renders. */
@@ -66,17 +67,17 @@ export default function CardForm(): JSX.Element {
           <select value={d.look} onChange={(e) => setLook(e.target.value as LookKey)}>{(Object.keys(LOOKS) as LookKey[]).map((k) => <option key={k} value={k}>{LOOKS[k].label}</option>)}</select></div>
         <div className="field"><label>Palette</label><input value={d.palette} onChange={(e) => up({ palette: e.target.value })} /></div>
       </div>
+      <div className="field"><label>Quality</label>
+        <Segmented options={(Object.keys(CARD_QUALITY) as CardQuality[]).map((k) => ({ key: k, label: CARD_QUALITY[k].label, hint: `${CARD_QUALITY[k].hint} · ~${CARD_QUALITY[k].seconds} s` }))} value={d.quality} onChange={(quality) => up({ quality })} />
+        <div className="hint">Balanced is the model's recipe (about 175 dpi at 5x7); High is 215 dpi. Draft keeps the full size, since lettering needs the pixels. Times are per candidate on the Studio with the model resident.</div>
+      </div>
       <div className="row">
         <div className="field"><label>Shape</label>
-          <select value={d.shape} onChange={(e) => up({ shape: e.target.value as CardShape })}>{(Object.keys(CARD_SHAPES) as CardShape[]).map((k) => <option key={k} value={k}>{CARD_SHAPES[k].label}</option>)}</select></div>
-        <div className="field"><label>Quality</label>
-          <select value={d.quality} onChange={(e) => up({ quality: e.target.value as CardQuality })}>{(Object.keys(CARD_QUALITY) as CardQuality[]).map((k) => <option key={k} value={k}>{CARD_QUALITY[k].label}</option>)}</select>
+          <select value={d.shape} onChange={(e) => up({ shape: e.target.value as CardShape })}>{(Object.keys(CARD_SHAPES) as CardShape[]).map((k) => <option key={k} value={k}>{CARD_SHAPES[k].label}</option>)}</select>
           <div className="hint">{size.width} x {size.height}, {CARD_QUALITY[d.quality].steps} steps</div></div>
+        <div className="field"><label>Candidates per attempt</label><input type="number" min={1} max={4} value={d.count} onChange={(e) => up({ count: Number(e.target.value) })} /><div className="hint">Rendered together; each costs its full time</div></div>
       </div>
-      <div className="row">
-        <div className="field"><label>Candidates per attempt</label><input type="number" min={1} max={4} value={d.count} onChange={(e) => up({ count: Number(e.target.value) })} /><div className="hint">Rendered together as one batch</div></div>
-        <div className="field"><label>Seed (blank = random)</label><input type="number" value={d.seed ?? ''} onChange={(e) => up({ seed: e.target.value === '' ? null : Number(e.target.value) })} /><div className="hint">Same seed + edited prompt keeps the layout</div></div>
-      </div>
+      <div className="field"><label>Seed (blank = random)</label><input type="number" value={d.seed ?? ''} onChange={(e) => up({ seed: e.target.value === '' ? null : Number(e.target.value) })} /><div className="hint">Same seed + edited prompt keeps the layout</div></div>
       <label className="toggle"><input type="checkbox" checked={d.verify} onChange={(e) => up({ verify: e.target.checked })} /> Read the lettering back with OCR and re-roll a new seed when it is wrong, up to
         <input type="number" min={1} max={CARD_ATTEMPTS_MAX} value={d.attempts} onChange={(e) => up({ attempts: Number(e.target.value) })} style={{ width: 56 }} disabled={!d.verify} /> attempts</label>
       <div className={`hint ${ocr && !ocr.ok ? 'warn' : ''}`}>{ocr ? ocr.detail : 'Checking OCR…'}</div>
@@ -86,7 +87,7 @@ export default function CardForm(): JSX.Element {
         <div className="hint">Editing here overrides the assembled prompt. {d.promptOverride.trim() && <button type="button" className="btn ghost suggest" onClick={() => up({ promptOverride: '' })}>Back to the assembled prompt</button>}</div>
       </details>
       <button className="btn primary" disabled={!canSubmit} onClick={() => { void submit() }}>Make the card</button>
-      <div className="hint">Z-Image Turbo on the Studio, measured at 880x1232 with the model resident: about {({ draft: 28, quick: 40, standard: 55, final: 90 } as const)[d.quality]} s per candidate{d.count > 1 ? `, ${d.count} candidates about ${d.count * ({ draft: 28, quick: 40, standard: 55, final: 90 } as const)[d.quality]} s` : ''}. The model is loaded in the background once a scene is in place; a cold load adds about 40 s. Gemma is not used at render time.</div>
+      <div className="hint">About {CARD_QUALITY[d.quality].seconds * Math.max(1, d.count)} s for {d.count > 1 ? `${d.count} candidates` : 'one candidate'} once the model is resident; it is loaded in the background as soon as a scene is in place, and a cold load adds about 40 s. Gemma is not used at render time.</div>
     </>
   )
 }

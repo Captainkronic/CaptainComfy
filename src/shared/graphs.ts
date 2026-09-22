@@ -5,7 +5,7 @@
  */
 import type { EditParams, ImageParams, MusicParams } from './types'
 import type { CardParams } from './card'
-import { CARD_QUALITY, cardSize } from './card'
+import { CARD_QUALITY, cardQualityKey, cardSize } from './card'
 import { clampSeconds, sizeFor } from './sizing'
 
 export const MODELS = {
@@ -41,7 +41,7 @@ export function imageGraph(p: ImageParams, finalPrompt: string, seed: number, pr
 /** A greeting card: the tested card sizes, the preset's steps, N candidates as one batch. */
 export function cardGraph(p: CardParams, seed: number, prefix = 'lite/card'): ApiGraph {
   const { width, height } = cardSize(p.shape, p.quality)
-  return zImageGraph({ prompt: p.prompt, width, height, batch: p.count, steps: CARD_QUALITY[p.quality].steps, seed, prefix })
+  return zImageGraph({ prompt: p.prompt, width, height, batch: p.count, steps: CARD_QUALITY[cardQualityKey(p.quality)].steps, seed, prefix })
 }
 
 /** A 1-step 256x256 render that only exists to load the Z-Image weights while the user is still

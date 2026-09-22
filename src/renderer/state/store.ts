@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Health, Job, Kind } from '@shared/types'
-import { defaultDraft, type CardDraft } from '@shared/card'
+import { cardQualityKey, defaultDraft, type CardDraft } from '@shared/card'
 type Tab = Kind | 'settings'
 import { call, listen } from '../lib'
 
@@ -17,7 +17,7 @@ interface State {
 }
 const DRAFT_KEY = 'captaincomfy.cardDraft'
 function loadDraft(): CardDraft {
-  try { const raw = localStorage.getItem(DRAFT_KEY); return raw ? { ...defaultDraft(), ...(JSON.parse(raw) as Partial<CardDraft>) } : defaultDraft() } catch { return defaultDraft() }
+  try { const raw = localStorage.getItem(DRAFT_KEY); const d = raw ? { ...defaultDraft(), ...(JSON.parse(raw) as Partial<CardDraft>) } : defaultDraft(); return { ...d, quality: cardQualityKey(d.quality) } } catch { return defaultDraft() }
 }
 export const useStore = create<State>((set, get) => ({
   tab: 'image', jobs: [], health: null, cardDraft: loadDraft(),

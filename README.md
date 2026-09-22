@@ -121,9 +121,13 @@ ComfyUI 0.35's default RAM-pressure cache evicts by itself when memory gets tigh
   still reading (`warmupGraph`, `JobManager.warm`). Measured: 48 s from cold, 0.0 s when already
   warm (ComfyUI answers from cache), and the real render afterwards takes 55 s instead of 94.
   Idle only, debounced to once a minute, and it releases Gemma first.
-- **Step presets** on the Card tab: `standard` and `final` keep the model's 8-step recipe; `quick`
-  (6 steps, 40 s warm) and `draft` (4 steps, 28 s) are there for iterating; `final` (1072x1504) is 91 s warm. In the test renders the
-  lettering held at both, but four samples are not proof, so 8 steps stays the default.
+- **Quality presets**, the same four words on both tabs. Image tab (per image, warm): Draft 0.5 MP /
+  4 steps 11 s, Fast 1 MP / 6 steps 35 s, Balanced 1 MP / 8 steps 47 s (the model's recipe), High
+  1.5 MP / 8 steps 78 s; Detail, Steps and Seed stay under Advanced and show "custom" when edited.
+  Card tab (per candidate): Draft 4 steps 28 s, Fast 6 steps 40 s, Balanced 8 steps 55 s, High
+  1072x1504 91 s; a card's Draft keeps the full size because lettering needs the pixels. In the
+  test renders the lettering held at 6 and 4 steps, but four samples are not proof, so Balanced
+  stays the default.
 - The warm-up carries the card's own prompt, so its text encoding is cached and the real render
   starts sampling within a couple of seconds.
 - **Measured and rejected** on the M4 Max (2026-09-22), so nobody has to try them again:

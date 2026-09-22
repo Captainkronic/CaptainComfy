@@ -18,23 +18,28 @@ export const CARD_SHAPES: Record<CardShape, { w: number; h: number; label: strin
   'a-portrait': { w: 1000, h: 1414, label: 'A-series paper, portrait' },
   'a-landscape': { w: 1414, h: 1000, label: 'A-series paper, landscape' }
 }
-export type CardQuality = 'draft' | 'quick' | 'standard' | 'final'
-/** Z-Image Turbo's recipe is 8 steps, which 'standard' and 'final' keep; the pixel budget is what
- *  separates those two. 'quick' and 'draft' trade steps for time (measured warm on the Studio at
- *  880x1232 on 2026-09-22: 8 steps 54 s, 6 steps 40 s, 4 steps 28 s). Lettering held in every test
- *  render at 6 and 4 steps (both OCR readers), but four samples do not make them the default. */
-export const CARD_QUALITY: Record<CardQuality, { megapixels: number; steps: number; label: string }> = {
-  draft: { megapixels: 1.1, steps: 4, label: 'draft: 4 steps, about half the time, composition checks' },
-  quick: { megapixels: 1.1, steps: 6, label: 'quick: 6 steps, about a quarter faster' },
-  standard: { megapixels: 1.1, steps: 8, label: 'standard: 8 steps, about 175 dpi at 5x7' },
-  final: { megapixels: 1.6, steps: 8, label: 'final: 8 steps, about 215 dpi at 5x7, slower' }
+export type CardQuality = 'draft' | 'fast' | 'balanced' | 'high'
+/** Z-Image Turbo's recipe is 8 steps, which 'balanced' and 'high' keep; the pixel budget is what
+ *  separates those two. 'fast' and 'draft' trade steps for time (measured warm on the Studio at
+ *  880x1232 on 2026-09-22: 8 steps 54 s, 6 steps 40 s, 4 steps 28 s; 1072x1504 91 s). Lettering
+ *  held in every test render at 6 and 4 steps (both OCR readers), but four samples do not make them
+ *  the default. A card's draft keeps the full size: lettering needs the pixels. */
+export const CARD_QUALITY: Record<CardQuality, { megapixels: number; steps: number; label: string; hint: string; seconds: number }> = {
+  draft: { megapixels: 1.1, steps: 4, label: 'Draft', hint: '4 steps', seconds: 28 },
+  fast: { megapixels: 1.1, steps: 6, label: 'Fast', hint: '6 steps', seconds: 40 },
+  balanced: { megapixels: 1.1, steps: 8, label: 'Balanced', hint: '8 steps', seconds: 55 },
+  high: { megapixels: 1.6, steps: 8, label: 'High', hint: '8 steps, 1.6 MP', seconds: 91 }
+}
+/** Older saved drafts and jobs used quick / standard / final. */
+export function cardQualityKey(q: string): CardQuality {
+  return q in CARD_QUALITY ? (q as CardQuality) : q === 'quick' ? 'fast' : q === 'final' ? 'high' : 'balanced'
 }
 
 /** Same rounding as generate_card.py: the short side first, so landscape mirrors portrait exactly. */
-export function cardSize(shape: CardShape, quality: CardQuality): { width: number; height: number } {
+export function cardSize(shape: CardShape, quality: CardQuality | string): { width: number; height: number } {
   const s = CARD_SHAPES[shape]
   const [shortU, longU] = s.w <= s.h ? [s.w, s.h] : [s.h, s.w]
-  const px = CARD_QUALITY[quality].megapixels * 1_000_000
+  const px = CARD_QUALITY[cardQualityKey(quality)].megapixels * 1_000_000
   const short = Math.max(256, Math.round(Math.sqrt((px * shortU) / longU) / 16) * 16)
   const long = Math.max(256, Math.round((short * longU) / shortU / 16) * 16)
   return s.w <= s.h ? { width: short, height: long } : { width: long, height: short }
@@ -97,7 +102,7 @@ export const PROMPT_WORDS_MAX = 320
 export const CARD_ATTEMPTS_MAX = 6
 
 export function defaultDraft(): CardDraft {
-  return { recipient: '', age: null, interests: '', lines: 'HAPPY BIRTHDAY', caps: true, bottom: '', scene: '', look: 'flat', palette: LOOKS.flat.palette, shape: 'portrait', quality: 'standard', count: 1, seed: null, verify: true, attempts: 3, promptOverride: '' }
+  return { recipient: '', age: null, interests: '', lines: 'HAPPY BIRTHDAY', caps: true, bottom: '', scene: '', look: 'flat', palette: LOOKS.flat.palette, shape: 'portrait', quality: 'balanced', count: 1, seed: null, verify: true, attempts: 3, promptOverride: '' }
 }
 
 export interface CardParams {
@@ -166,7 +171,7 @@ export function sceneRequest(d: CardDraft): string {
 export function draftToParams(d: CardDraft, series: string): CardParams {
   const prompt = d.promptOverride.trim() || cardPrompt(d)
   const who = d.recipient.trim() || topLines(d)[0] || 'card'
-  return { prompt, expect: expectedLettering(d), title: d.age === null ? who : `${who}, ${d.age}`, shape: d.shape, quality: d.quality, count: Math.min(4, Math.max(1, Math.round(d.count))), seed: d.seed, verify: d.verify, attempts: Math.min(CARD_ATTEMPTS_MAX, Math.max(1, Math.round(d.attempts))), attempt: 1, series }
+  return { prompt, expect: expectedLettering(d), title: d.age === null ? who : `${who}, ${d.age}`, shape: d.shape, quality: cardQualityKey(d.quality), count: Math.min(4, Math.max(1, Math.round(d.count))), seed: d.seed, verify: d.verify, attempts: Math.min(CARD_ATTEMPTS_MAX, Math.max(1, Math.round(d.attempts))), attempt: 1, series }
 }
 
 // ---- OCR verdicts: read_text.py's idea with two independent literal readers ----
