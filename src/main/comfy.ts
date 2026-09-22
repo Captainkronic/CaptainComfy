@@ -16,6 +16,9 @@ export interface ComfyEvent {
   data: Record<string, unknown>
 }
 
+/** Free RAM that says the Z-Image weights are really gone from a 36 GB host (they are ~20 GB). */
+const FREE_AFTER_FREE_GB = 22
+
 export class ComfyClient {
   private ws: WebSocket | null = null
   private listeners = new Set<(e: ComfyEvent) => void>()
@@ -98,7 +101,18 @@ export class ComfyClient {
       if (!q || q.queue_running.length === 0) break
       await new Promise((r) => setTimeout(r, 2000))
     }
-    await new Promise((r) => setTimeout(r, 2000))
+    // ComfyUI drops the weights when its garbage collector runs, up to ~10 s later. Loading a 21 GB
+    // Gemma before the 20 GB of Z-Image is really gone put the Studio 15 GB into swap and got ComfyUI
+    // killed (2026-09-22 14:54). So wait until free RAM on the host has actually come back and settled.
+    let last = -1, steady = 0
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      const free = await this.freeRamGb()
+      if (free === null) break
+      if (free >= FREE_AFTER_FREE_GB) break
+      if (Math.abs(free - last) < 0.5) { if (++steady >= 3) break } else steady = 0
+      last = free
+    }
   }
 
   /** The bytes of a result, wherever ComfyUI is. */

@@ -43,7 +43,7 @@ for (const f of ['settings.json', 'jobs.json']) {
 }
 const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'))
 const comfy = new ComfyClient(settings.get().comfyHost)
-const jobs = new JobManager({ comfy, omlx: () => ({ host: settings.get().omlxHost, model: settings.get().omlxModel, release: settings.get().releaseGemma }), emit: (j) => emit('event:job', j), file: join(app.getPath('userData'), 'jobs.json'), outputDir: () => settings.get().comfyOutputDir, dataDir: app.getPath('userData'), comfyWhere: () => { const s = settings.get(); return { host: s.comfyHost, ssh: { user: s.sshUser, key: s.sshKey, host: new URL(s.comfyHost).hostname } } } })
+const jobs = new JobManager({ comfy, omlx: () => ({ host: settings.get().omlxHost, model: settings.get().omlxModel, release: settings.get().releaseGemma }), emit: (j) => emit('event:job', j), file: join(app.getPath('userData'), 'jobs.json'), outputDir: () => settings.get().comfyOutputDir, dataDir: app.getPath('userData'), comfyWhere: () => { const s = settings.get(); return { host: s.comfyHost, ssh: { user: s.sshUser, key: s.sshKey, host: new URL(s.comfyHost).hostname } } }, startComfy: () => startComfy(), autoRestart: () => settings.get().autoRestartComfy })
 
 async function health(): Promise<Health> {
   const s = settings.get()
@@ -72,7 +72,8 @@ async function remoteStart(): Promise<{ ok: boolean; detail: string }> {
   console.log(`[lite] remote start result: ${JSON.stringify(out)}`)
   return out
 }
-handle('comfy:start', async () => { const s = settings.get(); if (!isLoopback(s.comfyHost)) return remoteStart(); return comfy.start({ dir: s.comfyDir, yaml: s.comfyModelPathsYaml, input: s.comfyInputDir, output: s.comfyOutputDir, flags: s.comfyFlags }) })
+async function startComfy(): Promise<{ ok: boolean; detail: string }> { const s = settings.get(); if (!isLoopback(s.comfyHost)) return remoteStart(); return comfy.start({ dir: s.comfyDir, yaml: s.comfyModelPathsYaml, input: s.comfyInputDir, output: s.comfyOutputDir, flags: s.comfyFlags }) }
+handle('comfy:start', async () => startComfy())
 handle('comfy:warm', async (what, prompt) => jobs.warm(what, prompt))
 handle('jobs:list', async () => jobs.list())
 handle('jobs:submitImage', async (p) => jobs.submit('image', p))

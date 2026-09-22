@@ -153,9 +153,18 @@ ComfyUI 0.35's default RAM-pressure cache evicts by itself when memory gets tigh
   frees the old weights first (`modelFamily` in `src/shared/graphs.ts`). On the Studio,
   `~/.config/comfy-mcp/idle-unload.py` frees the resident models after 15 idle minutes, and
   `~/bin/comfy-memory-guard.sh` kills ComfyUI if memory runs out.
-- A job left running by a crash or a relaunch is reconciled with ComfyUI's history at the next start
-  (its result is recovered rather than lost), and a power-save blocker keeps the app awake while a
-  remote render is in flight.
+- **Recovery and guardrails** (after five memory-guard kills on 2026-09-22, all traced in ComfyUI's
+  log): candidates render as separate prompts, never a batch (same time on MPS, a fraction of the
+  memory); every Z-Image decode is tiled (`VAEDecodeTiled`), so decoding never forces the UNet out to
+  CPU copies; sampling is capped at 1.6 MP per image; before each render the host's free RAM is
+  checked and ComfyUI freed first under 10 GB; after asking ComfyUI to free, the app waits until free
+  RAM has really come back before loading Gemma (ComfyUI only drops weights when its garbage
+  collector runs, up to 10 s later); a job ComfyUI loses to a restart waits for it, **starts it
+  itself after 20 s** (Settings toggle; the Start button's path, on the Studio `comfy-start` over
+  ssh), and resubmits, resuming at the candidate it was on, twice at most before failing with a
+  reason; on a relaunch the app reattaches to a prompt ComfyUI is still running, re-queues jobs that
+  were waiting or enriching, and recovers finished ones from history; a power-save blocker keeps
+  the app awake while a remote render is in flight.
 
 ## Image editing
 

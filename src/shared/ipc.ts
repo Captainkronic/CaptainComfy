@@ -17,6 +17,8 @@ export interface Settings {
   sshUser: string
   sshKey: string
   remoteStartCommand: string
+  /** A job that finds ComfyUI down starts it itself (the Start button's path) after 20 s. */
+  autoRestartComfy: boolean
 }
 
 export interface IpcApi {

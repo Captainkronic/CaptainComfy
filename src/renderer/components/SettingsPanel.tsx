@@ -31,6 +31,8 @@ export default function SettingsPanel(): JSX.Element {
       <label className="toggle"><input type="checkbox" checked={s.releaseGemma} onChange={(e) => { void apply({ releaseGemma: e.target.checked }) }} /> Load Gemma only for enrichment, release it before generating</label>
       <div className="hint">On: Gemma's ~7 GB is freed before ComfyUI loads the image or music model. Each job pays ~10 s to reload it. Off: Gemma stays resident (faster, less headroom).</div>
       <div className="field"><label>Gemma model id</label><input value={s.omlxModel} onChange={(e) => up('omlxModel', e.target.value)} /></div>
+      <label className="toggle"><input type="checkbox" checked={s.autoRestartComfy} onChange={(e) => { void apply({ autoRestartComfy: e.target.checked }) }} /> Start ComfyUI by itself when a job finds it down</label>
+      <div className="hint">After 20 s down, a waiting job runs the Start button's path (on the Studio: comfy-start over ssh, headless with the same flags). A job that gets ComfyUI killed three times is failed with a reason.</div>
       {isLoopback(s.comfyHost) && (
         <div className="field"><label>Local ComfyUI install (only used by Start it)</label><input value={s.comfyDir} onChange={(e) => up('comfyDir', e.target.value)} />
           <div className="hint">Output dir: {s.comfyOutputDir}</div></div>

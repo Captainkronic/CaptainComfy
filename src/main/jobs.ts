@@ -27,10 +27,16 @@ export interface JobDeps {
   comfyWhere: () => { host: string; ssh: { user: string; key: string; host: string } }
   /** The app's data folder: results are copied under results/ for OCR when ComfyUI is remote; the Vision helper is built under bin/. */
   dataDir: string
+  /** Start ComfyUI where it should run (the same path as the Start button), and whether a waiting job may do so by itself. */
+  startComfy: () => Promise<{ ok: boolean; detail: string }>
+  autoRestart: () => boolean
 }
 
 const MIN_FREE_GB = 10
 const MAX_RETRIES = 2
+/** Sampling above this per image has killed ComfyUI on the 36 GB Studio; Print adds pixels by upscaling instead. */
+const MAX_SAMPLE_MP = 1.6
+const COMFY_WAIT_MS = 60 * 60_000
 const LOST = 'ComfyUI no longer has this job (it was restarted or killed)'
 
 export class JobManager {
@@ -73,7 +79,14 @@ export class JobManager {
           // Still running or pending in ComfyUI: watch it to the end (node labels fall back to class names).
           console.log(`[lite] reattached to ${job.kind} job ${job.id}, still in ComfyUI's queue`)
           this.running = true; this.current = job; this.lastActivity = Date.now()
-          try { await this.watch(job, job.promptId!, {}); if (job.kind === 'card' && (job.status as JobStatus) === 'done') await this.verifyCard(job) } finally { this.running = false; this.current = null }
+          try {
+            const r = await this.watch(job, job.promptId!, {})
+            const outputs = [...job.outputs, ...r.outputs]; const count = Math.max(1, Number((job.params as { count?: number }).count ?? 1))
+            if ((job.status as JobStatus) === 'cancelled') { /* left as the user set it */ }
+            else if (r.error) this.patch(job, { status: r.error === LOST && (job.retries ?? 0) < MAX_RETRIES ? 'queued' : 'failed', retries: r.error === LOST ? (job.retries ?? 0) + 1 : job.retries, promptId: undefined, error: r.error === LOST ? undefined : r.error, progressLabel: r.error === LOST ? 'ComfyUI was restarted; retrying' : 'Failed', finishedAt: r.error === LOST ? undefined : Date.now() })
+            else if (outputs.length < count) this.patch(job, { status: 'queued', promptId: undefined, outputs, progressLabel: `Queued again for candidate ${outputs.length + 1} of ${count}` })
+            else { this.patch(job, { status: 'done', progress: 1, progressLabel: 'Done', finishedAt: Date.now(), outputs }); if (job.kind === 'card') await this.verifyCard(job) }
+          } finally { this.running = false; this.current = null }
           continue
         }
         const r = await this.d.comfy.outputs(job.promptId!).catch(() => null)
@@ -152,17 +165,22 @@ export class JobManager {
   private async run(job: Job): Promise<void> {
     const { host, model, release } = this.d.omlx()
     let gemmaUsed = false
-    const seed = (job.params.seed ?? null) === null ? randomSeed() : (job.params.seed as number)
+    const seed = job.seed ?? ((job.params.seed ?? null) === null ? randomSeed() : (job.params.seed as number))
     this.patch(job, { seed })
-    let graph: ApiGraph
+    // Candidates render as separate prompts (seed, seed+1, ...): a batch costs the same time on MPS and
+    // several times the memory. A job re-queued after a ComfyUI restart carries on from the ones it has.
+    let count = 1
+    let build: (i: number) => ApiGraph
     try {
       if (job.kind === 'card') {
         // The prompt was assembled in the form and any Gemma work happened there: nothing to do but render.
-        graph = cardGraph(job.params as CardParams, seed)
+        const p = job.params as CardParams; count = Math.max(1, p.count)
+        build = (i) => cardGraph({ ...p, count: 1 }, seed + i)
       } else if (job.kind === 'image') {
-        const p = job.params as ImageParams
-        let prompt = p.prompt
-        if (p.enrich) {
+        let p = job.params as ImageParams; count = Math.max(1, p.count)
+        if (p.megapixels > MAX_SAMPLE_MP) { p = { ...p, megapixels: MAX_SAMPLE_MP }; this.patch(job, { progressLabel: `${(job.params as ImageParams).megapixels} MP capped to ${MAX_SAMPLE_MP}: sampling above that kills ComfyUI on this Mac (Print upscales instead)` }) }
+        let prompt = job.enriched?.prompt ?? p.prompt
+        if (p.enrich && !job.enriched?.prompt) {
           this.patch(job, { status: 'enriching', progressLabel: 'Loading Gemma', startedAt: Date.now() })
           await this.loadGemma(host, model); gemmaUsed = true
           this.patch(job, { progressLabel: 'Gemma is rewriting the prompt' })
@@ -170,14 +188,15 @@ export class JobManager {
           this.patch(job, { enriched: { prompt: r.used ? r.text : undefined }, progressLabel: r.detail })
         }
         if (job.status === 'cancelled') return
-        graph = imageGraph(p, prompt, seed)
+        const pp = p
+        build = (i) => imageGraph({ ...pp, count: 1 }, prompt, seed + i)
       } else if (job.kind === 'edit') {
         const p = job.params as EditParams
         this.patch(job, { status: 'enriching', progressLabel: 'Uploading source image to ComfyUI', startedAt: Date.now() })
         const up = await this.d.comfy.uploadImage(p.imagePath)
         this.patch(job, { uploaded: up })
-        let instruction = p.instruction
-        if (p.enrich) {
+        let instruction = job.enriched?.prompt ?? p.instruction
+        if (p.enrich && !job.enriched?.prompt) {
           this.patch(job, { progressLabel: 'Loading Gemma' })
           await this.loadGemma(host, model); gemmaUsed = true
           this.patch(job, { progressLabel: 'Gemma is sharpening the edit instruction' })
@@ -185,11 +204,12 @@ export class JobManager {
           this.patch(job, { enriched: { prompt: r.used ? r.text : undefined }, progressLabel: r.detail })
         }
         if ((job.status as JobStatus) === 'cancelled') return
-        graph = editGraph(p, instruction, seed, up.subfolder ? `${up.subfolder}/${up.name}` : up.name)
+        const g = editGraph(p, instruction, seed, up.subfolder ? `${up.subfolder}/${up.name}` : up.name)
+        build = () => g
       } else {
         const p = job.params as MusicParams
-        let style = p.style, lyrics = p.lyrics
-        if (p.enrich) {
+        let style = job.enriched?.style ?? p.style, lyrics = job.enriched?.lyrics ?? p.lyrics
+        if (p.enrich && !job.enriched?.style) {
           this.patch(job, { status: 'enriching', progressLabel: 'Loading Gemma', startedAt: Date.now() })
           await this.loadGemma(host, model); gemmaUsed = true
           this.patch(job, { progressLabel: 'Gemma is expanding the style' })
@@ -201,7 +221,8 @@ export class JobManager {
         style = normalizeStyleTags(style, p.bpm)   // tags and the bpm parameter must agree
         this.patch(job, { enriched: { ...(job.enriched ?? {}), style } })
         if (job.status === 'cancelled') return
-        graph = musicGraph(p, style, lyrics, seed)
+        const g = musicGraph(p, style, lyrics, seed)
+        build = () => g
       }
       // A scene drafted in the Card form, or another instance, may have left Gemma resident: ask oMLX.
       if (release && (gemmaUsed || await gemmaLoaded(host, model))) {
@@ -215,25 +236,59 @@ export class JobManager {
       const family = modelFamily(job.kind)
       if (this.lastFamily && this.lastFamily !== family) { this.patch(job, { progressLabel: 'Freeing the previous model in ComfyUI' }); await this.d.comfy.free() }
       this.lastFamily = family
-      // ComfyUI may be down (killed by the memory guard, or being restarted): wait for it rather than fail.
-      if (!(await this.d.comfy.up()).ok) {
-        this.patch(job, { status: 'running', progressLabel: 'Waiting for ComfyUI to come back', startedAt: job.startedAt ?? Date.now() })
-        const t0 = Date.now()
-        while (!(await this.d.comfy.up()).ok) { if ((job.status as JobStatus) === 'cancelled') return; if (Date.now() - t0 > 20 * 60_000) throw new Error('ComfyUI did not come back within 20 minutes'); await new Promise((r) => setTimeout(r, 5000)); this.lastActivity = Date.now() }
-        this.lastFamily = null
+      const outputs: Output[] = [...job.outputs]
+      for (let i = outputs.length; i < count; i++) {
+        const tag = count > 1 ? `candidate ${i + 1} of ${count}: ` : ''
+        if (!(await this.waitForComfy(job, tag))) return
+        // Resident weights plus CPU-side copies of a partially unloaded model leave too little for the next
+        // render; below this much free RAM a clean reload (about 40 s) beats a kernel-pressure kill.
+        const freeGb = await this.d.comfy.freeRamGb()
+        if (freeGb !== null && freeGb < MIN_FREE_GB) { this.patch(job, { progressLabel: `${tag}Freeing memory in ComfyUI first (${freeGb.toFixed(1)} GB free)` }); await this.d.comfy.free(); this.lastFamily = null }
+        this.patch(job, { status: 'running', progress: null, progressLabel: `${tag}Sending to ComfyUI`, startedAt: job.startedAt ?? Date.now() })
+        const graph = build(i)
+        const promptId = await this.d.comfy.submit(graph)
+        this.patch(job, { promptId })
+        const r = await this.watch(job, promptId, graph, tag)
+        if ((job.status as JobStatus) === 'cancelled') return
+        if (r.error === LOST) {
+          if ((job.retries ?? 0) < MAX_RETRIES) {
+            // ComfyUI was restarted or killed under this prompt: queue the job again; it resumes at this candidate.
+            console.warn(`[lite] ${job.kind} job ${job.id} lost to a ComfyUI restart; retry ${(job.retries ?? 0) + 1} of ${MAX_RETRIES}`)
+            this.patch(job, { status: 'queued', retries: (job.retries ?? 0) + 1, promptId: undefined, progress: null, outputs, progressLabel: `ComfyUI was restarted; retrying (${(job.retries ?? 0) + 1} of ${MAX_RETRIES})` })
+            return
+          }
+          throw new Error(`ComfyUI was killed under this job ${MAX_RETRIES + 1} times; it is too big for the Studio's memory (try fewer candidates, a lower quality, or Print instead of a larger canvas)`)
+        }
+        if (r.error) throw new Error(r.error)
+        outputs.push(...r.outputs)
+        this.patch(job, { outputs })
       }
-      // Resident weights plus CPU-side copies of a partially unloaded model leave too little for the next
-      // render; below this much free RAM a clean reload (about 40 s) beats a kernel-pressure kill.
-      const freeGb = await this.d.comfy.freeRamGb()
-      if (freeGb !== null && freeGb < MIN_FREE_GB) { this.patch(job, { progressLabel: `Freeing memory in ComfyUI first (${freeGb.toFixed(1)} GB free)` }); await this.d.comfy.free(); this.lastFamily = null }
-      this.patch(job, { status: 'running', progressLabel: 'Sending to ComfyUI', startedAt: job.startedAt ?? Date.now() })
-      const promptId = await this.d.comfy.submit(graph)
-      this.patch(job, { promptId })
-      await this.watch(job, promptId, graph)
-      if (job.kind === 'card' && (job.status as JobStatus) === 'done') await this.verifyCard(job)
+      this.patch(job, { status: 'done', progress: 1, progressLabel: 'Done', finishedAt: Date.now(), outputs })
+      if (job.kind === 'card') await this.verifyCard(job)
     } catch (err) {
       this.patch(job, { status: 'failed', error: err instanceof Error ? err.message : String(err), progressLabel: 'Failed', finishedAt: Date.now() })
     }
+  }
+
+  /** ComfyUI may be down (killed by the memory guard, or being restarted). Wait for it, and after 20 s
+   *  start it ourselves when allowed, the way the Start button does. False when the job was cancelled. */
+  private async waitForComfy(job: Job, tag: string): Promise<boolean> {
+    if ((await this.d.comfy.up()).ok) return true
+    this.patch(job, { status: 'running', progress: null, progressLabel: `${tag}Waiting for ComfyUI to come back`, startedAt: job.startedAt ?? Date.now() })
+    const t0 = Date.now(); let started = false
+    while (!(await this.d.comfy.up()).ok) {
+      if ((job.status as JobStatus) === 'cancelled') return false
+      if (Date.now() - t0 > COMFY_WAIT_MS) throw new Error('ComfyUI did not come back within an hour')
+      if (!started && this.d.autoRestart() && Date.now() - t0 > 20_000) {
+        started = true
+        this.patch(job, { progressLabel: `${tag}ComfyUI is down; starting it` })
+        const r = await this.d.startComfy(); console.log(`[lite] auto-start of ComfyUI: ${JSON.stringify(r)}`)
+        this.patch(job, { progressLabel: r.ok ? `${tag}ComfyUI started (${r.detail}); waiting for it to answer` : `${tag}Could not start ComfyUI (${r.detail}); still waiting for it` })
+      }
+      await new Promise((r) => setTimeout(r, 5000)); this.lastActivity = Date.now()
+    }
+    this.lastFamily = null   // a fresh ComfyUI holds nothing
+    return true
   }
 
   /** A result file on this disk: ComfyUI's own output when local, otherwise a copy fetched over the tailnet. */
@@ -275,7 +330,9 @@ export class JobManager {
     }
   }
 
-  private watch(job: Job, promptId: string, graph: ApiGraph): Promise<void> {
+  /** Follow one prompt to its end. Resolves with its outputs, or an error (LOST when ComfyUI no longer
+   *  has it); the caller decides what that means for the job. */
+  private watch(job: Job, promptId: string, graph: ApiGraph, tag = ''): Promise<{ outputs: Output[]; error?: string }> {
     return new Promise((resolve) => {
       let settled = false
       let eventError: string | null = null
@@ -289,15 +346,8 @@ export class JobManager {
           if (r.status) break
           await new Promise((res) => setTimeout(res, 500))
         }
-        if (job.status === 'cancelled') { resolve(); return }
         const err = eventError ?? r.error ?? (r.status === 'error' ? 'ComfyUI reported an error' : r.status ? null : 'ComfyUI never wrote a result for this job')
-        if (err === LOST && (job.retries ?? 0) < MAX_RETRIES) {
-          // ComfyUI was restarted or killed under this job: queue it again; run() waits for ComfyUI first.
-          console.warn(`[lite] ${job.kind} job ${job.id} lost to a ComfyUI restart; retry ${(job.retries ?? 0) + 1} of ${MAX_RETRIES}`)
-          this.patch(job, { status: 'queued', retries: (job.retries ?? 0) + 1, promptId: undefined, progress: null, progressLabel: `ComfyUI was restarted; retrying (${(job.retries ?? 0) + 1} of ${MAX_RETRIES})` })
-        } else if (err) this.patch(job, { status: 'failed', error: err, progressLabel: 'Failed', finishedAt: Date.now(), outputs: r.outputs })
-        else this.patch(job, { status: 'done', progress: 1, progressLabel: 'Done', finishedAt: Date.now(), outputs: r.outputs })
-        resolve()
+        resolve(err ? { outputs: r.outputs, error: err } : { outputs: r.outputs })
       }
       const off = this.d.comfy.on((e: ComfyEvent) => {
         const d = e.data
@@ -306,17 +356,17 @@ export class JobManager {
           const node = d['node'] as string | null
           if (node === null) { void finish(); return }
           const cls = graph[node]?.class_type ?? node
-          this.patch(job, { progress: null, progressLabel: NODE_LABELS[cls] ?? cls })
+          this.patch(job, { progress: null, progressLabel: tag + (NODE_LABELS[cls] ?? cls) })
         } else if (e.type === 'progress') {
           const v = Number(d['value']), m = Number(d['max'])
-          if (m > 0) this.patch(job, { progress: v / m, progressLabel: `Generating  ${v}/${m} steps` })
+          if (m > 0) this.patch(job, { progress: v / m, progressLabel: `${tag}Generating  ${v}/${m} steps` })
         } else if (e.type === 'execution_error') {
           eventError = `${String(d['node_type'] ?? '')}: ${String(d['exception_message'] ?? 'error')}`.trim(); void finish()
         } else if (e.type === 'execution_interrupted') { eventError = 'interrupted'; void finish() }
         else if (e.type === 'execution_success') { void finish() }
       })
       // Belt and braces every 15 s: history done -> finish; prompt gone from queue AND history
-      // (ComfyUI restarted or was killed) -> fail instead of waiting forever.
+      // (ComfyUI restarted or was killed) -> LOST instead of waiting forever.
       const poll = setInterval(() => {
         void (async () => {
           const r = await this.d.comfy.outputs(promptId).catch(() => null)

@@ -19,7 +19,8 @@ export const DEFAULTS: Settings = {
   releaseGemma: true,
   sshUser: 'adam',
   sshKey: join(HOME, '.ssh', 'id_ed25519'),
-  remoteStartCommand: '$HOME/.local/bin/comfy-start'
+  remoteStartCommand: '$HOME/.local/bin/comfy-start',
+  autoRestartComfy: true
 }
 
 export class SettingsStore {
