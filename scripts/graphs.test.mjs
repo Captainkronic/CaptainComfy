@@ -19,10 +19,18 @@ test('sizeFor snaps to 16 and honours aspect', () => {
   const s = sizeFor('1:1', 1.0); assert.equal(s.width, 1008); assert.equal(s.height, 1008)
   const w = sizeFor('16:9', 1.0); assert.ok(w.width > w.height); assert.equal(w.width % 16, 0); assert.equal(w.height % 16, 0)
 })
+test('upscale tail: RealESRGAN x4 after decode, halved for 2x, straight for 4x', () => {
+  const g2 = imageGraph({ prompt: 'x', enrich: false, aspect: '1:1', megapixels: 1.5, count: 1, steps: 8, seed: null, upscale: 2 }, 'f', 1)
+  assert.equal(g2['11'].class_type, 'UpscaleModelLoader'); assert.deepEqual(g2['12'].inputs.image, ['9', 0]); assert.equal(g2['13'].inputs.scale_by, 0.5); assert.deepEqual(g2['10'].inputs.images, ['13', 0])
+  const g4 = imageGraph({ prompt: 'x', enrich: false, aspect: '1:1', megapixels: 1.5, count: 1, steps: 8, seed: null, upscale: 4 }, 'f', 1)
+  assert.equal(g4['13'], undefined); assert.deepEqual(g4['10'].inputs.images, ['12', 0])
+  const g1 = imageGraph({ prompt: 'x', enrich: false, aspect: '1:1', megapixels: 1, count: 1, steps: 8, seed: null }, 'f', 1)
+  assert.equal(g1['11'], undefined); assert.deepEqual(g1['10'].inputs.images, ['9', 0])
+})
 test('image quality presets round-trip and balanced is the recipe', () => {
   assert.equal(IMAGE_QUALITY.balanced.steps, 8); assert.equal(IMAGE_QUALITY.balanced.megapixels, 1)
   for (const k of Object.keys(IMAGE_QUALITY)) assert.equal(imageQualityOf(IMAGE_QUALITY[k]), k)
-  assert.equal(imageQualityOf({ megapixels: 1, steps: 7 }), null)
+  assert.equal(imageQualityOf({ megapixels: 1, steps: 7 }), null); assert.equal(imageQualityOf({ megapixels: 1.5, steps: 8, upscale: 2 }), 'print'); assert.equal(imageQualityOf({ megapixels: 1.5, steps: 8 }), 'high')
 })
 test('clampSeconds bounds', () => { assert.equal(clampSeconds(3), 10); assert.equal(clampSeconds(999), 240); assert.equal(clampSeconds(30.4), 30) })
 test('image graph wires the proven recipe', () => {
@@ -109,6 +117,8 @@ test('card graph uses the tested recipe at card size, candidates as one batch', 
   assert.equal(q['8'].inputs.steps, 6); assert.equal(q['7'].inputs.width, 880)
   const f = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'high', count: 1, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 1)
   assert.equal(f['8'].inputs.steps, 8); assert.equal(f['7'].inputs.width, 1072)
+  const c = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'print', count: 1, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 1)
+  assert.equal(c['7'].inputs.width, 1072); assert.equal(c['13'].inputs.scale_by, 0.5); assert.deepEqual(c['10'].inputs.images, ['13', 0])
   assert.equal(modelFamily('card'), modelFamily('image')); assert.notEqual(modelFamily('card'), modelFamily('music'))
   assert.equal(lookForAge(3), 'flat'); assert.equal(lookForAge(8), 'gouache'); assert.equal(lookForAge(40), 'screen'); assert.equal(lookForAge(null), 'riso')
 })

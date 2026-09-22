@@ -11,14 +11,19 @@ import { clampSeconds, sizeFor } from './sizing'
 export const MODELS = {
   image: { unet: 'z_image_turbo_bf16.safetensors', clip: 'qwen_3_4b.safetensors', clipType: 'lumina2', vae: 'ae.safetensors' },
   edit: { unet: 'flux-2-klein-4b.safetensors', clip: 'qwen_3_4b.safetensors', clipType: 'flux2', vae: 'flux2-vae.safetensors' },
-  music: { ckpt: 'ace_step_1.5_turbo_aio.safetensors' }
+  music: { ckpt: 'ace_step_1.5_turbo_aio.safetensors' },
+  upscale: 'RealESRGAN_x4plus.pth'   // ~/ComfyUI-Shared/models/upscale_models on the Studio, official Real-ESRGAN release
 } as const
 
 export type ApiGraph = Record<string, { class_type: string; inputs: Record<string, unknown> }>
 
-/** Z-Image Turbo text-to-image: res_multistep, cfg 1, shift 3. Shared by the Image and Card tabs. */
-export function zImageGraph(o: { prompt: string; width: number; height: number; batch: number; steps: number; seed: number; prefix: string }): ApiGraph {
-  return {
+/** Z-Image Turbo text-to-image: res_multistep, cfg 1, shift 3. Shared by the Image and Card tabs.
+ *  `upscale` 2 or 4 runs RealESRGAN x4 on the decoded image (tiled by ComfyUI, so it costs little
+ *  memory) and, for 2, scales the result back by half with lanczos. Sampling above 1.5 MP is not
+ *  survivable on the 36 GB Studio; this is how anything larger gets made. */
+export function zImageGraph(o: { prompt: string; width: number; height: number; batch: number; steps: number; seed: number; prefix: string; upscale?: number }): ApiGraph {
+  const up = o.upscale === 2 || o.upscale === 4 ? o.upscale : 1
+  const g: ApiGraph = {
     '1': { class_type: 'UNETLoader', inputs: { unet_name: MODELS.image.unet, weight_dtype: 'default' } },
     '2': { class_type: 'CLIPLoader', inputs: { clip_name: MODELS.image.clip, type: MODELS.image.clipType, device: 'default' } },
     '3': { class_type: 'VAELoader', inputs: { vae_name: MODELS.image.vae } },
@@ -31,17 +36,25 @@ export function zImageGraph(o: { prompt: string; width: number; height: number; 
     '9': { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
     '10': { class_type: 'SaveImage', inputs: { images: ['9', 0], filename_prefix: o.prefix } }
   }
+  if (up > 1) {
+    g['11'] = { class_type: 'UpscaleModelLoader', inputs: { model_name: MODELS.upscale } }
+    g['12'] = { class_type: 'ImageUpscaleWithModel', inputs: { upscale_model: ['11', 0], image: ['9', 0] } }
+    if (up === 4) g['10']!.inputs['images'] = ['12', 0]
+    else { g['13'] = { class_type: 'ImageScaleBy', inputs: { image: ['12', 0], upscale_method: 'lanczos', scale_by: up / 4 } }; g['10']!.inputs['images'] = ['13', 0] }
+  }
+  return g
 }
 
 export function imageGraph(p: ImageParams, finalPrompt: string, seed: number, prefix = 'lite/image'): ApiGraph {
   const { width, height } = sizeFor(p.aspect, p.megapixels, 16)
-  return zImageGraph({ prompt: finalPrompt, width, height, batch: p.count, steps: p.steps, seed, prefix })
+  return zImageGraph({ prompt: finalPrompt, width, height, batch: p.count, steps: p.steps, seed, prefix, upscale: p.upscale })
 }
 
 /** A greeting card: the tested card sizes, the preset's steps, N candidates as one batch. */
 export function cardGraph(p: CardParams, seed: number, prefix = 'lite/card'): ApiGraph {
   const { width, height } = cardSize(p.shape, p.quality)
-  return zImageGraph({ prompt: p.prompt, width, height, batch: p.count, steps: CARD_QUALITY[cardQualityKey(p.quality)].steps, seed, prefix })
+  const q = CARD_QUALITY[cardQualityKey(p.quality)]
+  return zImageGraph({ prompt: p.prompt, width, height, batch: p.count, steps: q.steps, seed, prefix, upscale: q.upscale })
 }
 
 /** A 1-step 256x256 render that only exists to load the Z-Image weights while the user is still
@@ -108,5 +121,5 @@ export function musicGraph(p: MusicParams, style: string, lyrics: string, seed: 
 export const NODE_LABELS: Record<string, string> = {
   UNETLoader: 'Loading image model', CLIPLoader: 'Loading text encoder', VAELoader: 'Loading VAE', CheckpointLoaderSimple: 'Loading music model',
   CLIPTextEncode: 'Encoding prompt', 'TextEncodeAceStepAudio1.5': 'Encoding song', KSampler: 'Generating', VAEDecode: 'Decoding image',
-  VAEDecodeAudio: 'Decoding audio', SaveImage: 'Saving', ImageScaleToTotalPixels: 'Scaling source image', VAEEncode: 'Encoding source image', ReferenceLatent: 'Attaching reference', SamplerCustomAdvanced: 'Generating', GetImageSize: 'Reading size', Flux2Scheduler: 'Scheduling', SaveAudioMP3: 'Saving MP3', EmptySD3LatentImage: 'Preparing canvas', 'EmptyAceStep1.5LatentAudio': 'Preparing'
+  VAEDecodeAudio: 'Decoding audio', SaveImage: 'Saving', ImageScaleToTotalPixels: 'Scaling source image', VAEEncode: 'Encoding source image', ReferenceLatent: 'Attaching reference', SamplerCustomAdvanced: 'Generating', GetImageSize: 'Reading size', Flux2Scheduler: 'Scheduling', SaveAudioMP3: 'Saving MP3', EmptySD3LatentImage: 'Preparing canvas', 'EmptyAceStep1.5LatentAudio': 'Preparing', UpscaleModelLoader: 'Loading the upscaler', ImageUpscaleWithModel: 'Upscaling', ImageScaleBy: 'Resizing'
 }

@@ -69,12 +69,12 @@ export default function CardForm(): JSX.Element {
       </div>
       <div className="field"><label>Quality</label>
         <Segmented options={(Object.keys(CARD_QUALITY) as CardQuality[]).map((k) => ({ key: k, label: CARD_QUALITY[k].label, hint: `${CARD_QUALITY[k].hint} · ~${CARD_QUALITY[k].seconds} s` }))} value={d.quality} onChange={(quality) => up({ quality })} />
-        <div className="hint">Balanced is the model's recipe (about 175 dpi at 5x7); High is 215 dpi. Draft keeps the full size, since lettering needs the pixels. Times are per candidate on the Studio with the model resident.</div>
+        <div className="hint">Balanced is the model's recipe (about 175 dpi at 5x7); High is 215 dpi; Print is High upscaled 2x with RealESRGAN, about 430 dpi. Draft keeps the full size, since lettering needs the pixels. Times are per candidate on the Studio with the model resident.</div>
       </div>
       <div className="row">
         <div className="field"><label>Shape</label>
           <select value={d.shape} onChange={(e) => up({ shape: e.target.value as CardShape })}>{(Object.keys(CARD_SHAPES) as CardShape[]).map((k) => <option key={k} value={k}>{CARD_SHAPES[k].label}</option>)}</select>
-          <div className="hint">{size.width} x {size.height}, {CARD_QUALITY[d.quality].steps} steps</div></div>
+          <div className="hint">{size.width} x {size.height}{CARD_QUALITY[d.quality].upscale > 1 ? ` → ${size.width * CARD_QUALITY[d.quality].upscale} x ${size.height * CARD_QUALITY[d.quality].upscale}` : ''}, {CARD_QUALITY[d.quality].steps} steps</div></div>
         <div className="field"><label>Candidates per attempt</label><input type="number" min={1} max={4} value={d.count} onChange={(e) => up({ count: Number(e.target.value) })} /><div className="hint">Rendered together; each costs its full time</div></div>
       </div>
       <div className="field"><label>Seed (blank = random)</label><input type="number" value={d.seed ?? ''} onChange={(e) => up({ seed: e.target.value === '' ? null : Number(e.target.value) })} /><div className="hint">Same seed + edited prompt keeps the layout</div></div>

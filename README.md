@@ -121,13 +121,19 @@ ComfyUI 0.35's default RAM-pressure cache evicts by itself when memory gets tigh
   still reading (`warmupGraph`, `JobManager.warm`). Measured: 48 s from cold, 0.0 s when already
   warm (ComfyUI answers from cache), and the real render afterwards takes 55 s instead of 94.
   Idle only, debounced to once a minute, and it releases Gemma first.
-- **Quality presets**, the same four words on both tabs. Image tab (per image, warm): Draft 0.5 MP /
+- **Quality presets**, the same words on both tabs. Image tab (per image, warm): Draft 0.5 MP /
   4 steps 11 s, Fast 1 MP / 6 steps 35 s, Balanced 1 MP / 8 steps 47 s (the model's recipe), High
-  1.5 MP / 8 steps 78 s; Detail, Steps and Seed stay under Advanced and show "custom" when edited.
-  Card tab (per candidate): Draft 4 steps 28 s, Fast 6 steps 40 s, Balanced 8 steps 55 s, High
-  1072x1504 91 s; a card's Draft keeps the full size because lettering needs the pixels. In the
-  test renders the lettering held at 6 and 4 steps, but four samples are not proof, so Balanced
-  stays the default.
+  1.5 MP / 8 steps 78 s, Ultra 1.5 MP / 12 steps 108 s, Print 1.5 MP / 8 steps + RealESRGAN 2x
+  (2464 px) 80 s; Detail, Steps, Upscale and Seed stay under Advanced and show "custom" when
+  edited. Card tab (per candidate): Draft 4 steps 28 s, Fast 6 steps 40 s, Balanced 8 steps 55 s,
+  High 1072x1504 91 s, Print = High upscaled 2x to 2144x3008 (about 430 dpi at 5x7) 97 s; a card's
+  Draft keeps the full size because lettering needs the pixels. In the test renders the lettering
+  held at 6 and 4 steps, and through the upscale, but few samples are not proof, so Balanced stays
+  the default.
+- **Sampling above 1.5 MP is not survivable on the 36 GB Studio**: a 2 MP render took the kernel to
+  critical memory pressure and the guard killed ComfyUI. Hence the tiers above High add steps or
+  upscale (RealESRGAN x4plus, the official release, in `~/ComfyUI-Shared/models/upscale_models`,
+  tiled by ComfyUI, ~3 s at 1.5 MP) rather than a bigger canvas. 1.5 MP peaks at ~8.5 GB of swap.
 - The warm-up carries the card's own prompt, so its text encoding is cached and the real render
   starts sampling within a couple of seconds.
 - **Measured and rejected** on the M4 Max (2026-09-22), so nobody has to try them again:

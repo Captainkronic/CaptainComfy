@@ -18,17 +18,20 @@ export const CARD_SHAPES: Record<CardShape, { w: number; h: number; label: strin
   'a-portrait': { w: 1000, h: 1414, label: 'A-series paper, portrait' },
   'a-landscape': { w: 1414, h: 1000, label: 'A-series paper, landscape' }
 }
-export type CardQuality = 'draft' | 'fast' | 'balanced' | 'high'
+export type CardQuality = 'draft' | 'fast' | 'balanced' | 'high' | 'print'
 /** Z-Image Turbo's recipe is 8 steps, which 'balanced' and 'high' keep; the pixel budget is what
  *  separates those two. 'fast' and 'draft' trade steps for time (measured warm on the Studio at
  *  880x1232 on 2026-09-22: 8 steps 54 s, 6 steps 40 s, 4 steps 28 s; 1072x1504 91 s). Lettering
  *  held in every test render at 6 and 4 steps (both OCR readers), but four samples do not make them
  *  the default. A card's draft keeps the full size: lettering needs the pixels. */
-export const CARD_QUALITY: Record<CardQuality, { megapixels: number; steps: number; label: string; hint: string; seconds: number }> = {
-  draft: { megapixels: 1.1, steps: 4, label: 'Draft', hint: '4 steps', seconds: 28 },
-  fast: { megapixels: 1.1, steps: 6, label: 'Fast', hint: '6 steps', seconds: 40 },
-  balanced: { megapixels: 1.1, steps: 8, label: 'Balanced', hint: '8 steps', seconds: 55 },
-  high: { megapixels: 1.6, steps: 8, label: 'High', hint: '8 steps, 1.6 MP', seconds: 91 }
+export const CARD_QUALITY: Record<CardQuality, { megapixels: number; steps: number; upscale: number; label: string; hint: string; seconds: number }> = {
+  draft: { megapixels: 1.1, steps: 4, upscale: 1, label: 'Draft', hint: '4 steps', seconds: 28 },
+  fast: { megapixels: 1.1, steps: 6, upscale: 1, label: 'Fast', hint: '6 steps', seconds: 40 },
+  balanced: { megapixels: 1.1, steps: 8, upscale: 1, label: 'Balanced', hint: '8 steps', seconds: 55 },
+  high: { megapixels: 1.6, steps: 8, upscale: 1, label: 'High', hint: '8 steps, 1.6 MP', seconds: 91 },
+  // Above High: the same render, upscaled 2x with RealESRGAN (2144x3008 for a 5x7, about 430 dpi).
+  // More pixels by sampling are not survivable on the Studio, and more steps do not help lettering.
+  print: { megapixels: 1.6, steps: 8, upscale: 2, label: 'Print', hint: 'High, 2x upscaled', seconds: 97 }
 }
 /** Older saved drafts and jobs used quick / standard / final. */
 export function cardQualityKey(q: string): CardQuality {

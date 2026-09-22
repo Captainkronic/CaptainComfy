@@ -10,6 +10,8 @@ export interface ImageParams {
   count: number        // 1 .. 4
   steps: number        // 4 .. 12 (Turbo)
   seed: number | null  // null = random
+  /** 1 (none), 2 or 4: RealESRGAN x4 after decoding, scaled to the factor. Absent means 1. */
+  upscale?: number
 }
 
 export interface EditParams {
