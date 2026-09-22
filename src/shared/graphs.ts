@@ -4,6 +4,8 @@
  * specific lives here and nowhere else.
  */
 import type { EditParams, ImageParams, MusicParams } from './types'
+import type { CardParams } from './card'
+import { CARD_QUALITY, cardSize } from './card'
 import { clampSeconds, sizeFor } from './sizing'
 
 export const MODELS = {
@@ -14,21 +16,46 @@ export const MODELS = {
 
 export type ApiGraph = Record<string, { class_type: string; inputs: Record<string, unknown> }>
 
-export function imageGraph(p: ImageParams, finalPrompt: string, seed: number, prefix = 'lite/image'): ApiGraph {
-  const { width, height } = sizeFor(p.aspect, p.megapixels, 16)
+/** Z-Image Turbo text-to-image: res_multistep, cfg 1, shift 3. Shared by the Image and Card tabs. */
+export function zImageGraph(o: { prompt: string; width: number; height: number; batch: number; steps: number; seed: number; prefix: string }): ApiGraph {
   return {
     '1': { class_type: 'UNETLoader', inputs: { unet_name: MODELS.image.unet, weight_dtype: 'default' } },
     '2': { class_type: 'CLIPLoader', inputs: { clip_name: MODELS.image.clip, type: MODELS.image.clipType, device: 'default' } },
     '3': { class_type: 'VAELoader', inputs: { vae_name: MODELS.image.vae } },
     '4': { class_type: 'ModelSamplingAuraFlow', inputs: { model: ['1', 0], shift: 3 } },
-    '5': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: finalPrompt } },
+    '5': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: o.prompt } },
     '6': { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['5', 0] } },
-    '7': { class_type: 'EmptySD3LatentImage', inputs: { width, height, batch_size: Math.min(4, Math.max(1, p.count)) } },
+    '7': { class_type: 'EmptySD3LatentImage', inputs: { width: o.width, height: o.height, batch_size: Math.min(4, Math.max(1, o.batch)) } },
     '8': { class_type: 'KSampler', inputs: { model: ['4', 0], positive: ['5', 0], negative: ['6', 0], latent_image: ['7', 0],
-           seed, steps: Math.min(12, Math.max(4, p.steps)), cfg: 1, sampler_name: 'res_multistep', scheduler: 'simple', denoise: 1 } },
+           seed: o.seed, steps: Math.min(12, Math.max(1, o.steps)), cfg: 1, sampler_name: 'res_multistep', scheduler: 'simple', denoise: 1 } },
     '9': { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
-    '10': { class_type: 'SaveImage', inputs: { images: ['9', 0], filename_prefix: prefix } }
+    '10': { class_type: 'SaveImage', inputs: { images: ['9', 0], filename_prefix: o.prefix } }
   }
+}
+
+export function imageGraph(p: ImageParams, finalPrompt: string, seed: number, prefix = 'lite/image'): ApiGraph {
+  const { width, height } = sizeFor(p.aspect, p.megapixels, 16)
+  return zImageGraph({ prompt: finalPrompt, width, height, batch: p.count, steps: p.steps, seed, prefix })
+}
+
+/** A greeting card: the tested card sizes, the preset's steps, N candidates as one batch. */
+export function cardGraph(p: CardParams, seed: number, prefix = 'lite/card'): ApiGraph {
+  const { width, height } = cardSize(p.shape, p.quality)
+  return zImageGraph({ prompt: p.prompt, width, height, batch: p.count, steps: CARD_QUALITY[p.quality].steps, seed, prefix })
+}
+
+/** A 1-step 256x256 render that only exists to load the Z-Image weights while the user is still
+ *  typing; PreviewImage keeps it out of the output folder. Identical every time, so once the node
+ *  cache holds it ComfyUI answers from cache in a moment. */
+export function warmupGraph(): ApiGraph {
+  const g = zImageGraph({ prompt: 'warm up', width: 256, height: 256, batch: 1, steps: 1, seed: 1, prefix: 'lite/warmup' })
+  g['10'] = { class_type: 'PreviewImage', inputs: { images: ['9', 0] } }
+  return g
+}
+
+/** Which weights a job needs. Consecutive jobs of one family reuse ComfyUI's resident models; a change frees them first. */
+export function modelFamily(kind: 'image' | 'edit' | 'music' | 'card'): 'zimage' | 'klein' | 'ace' {
+  return kind === 'music' ? 'ace' : kind === 'edit' ? 'klein' : 'zimage'
 }
 
 /** Instruction edit with FLUX.2 Klein 4B (distilled): reference latent on both positive and zeroed

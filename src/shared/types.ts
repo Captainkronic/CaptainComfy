@@ -1,4 +1,6 @@
-export type Kind = 'image' | 'edit' | 'music'
+import type { CardParams, LetteringReport } from './card'
+
+export type Kind = 'image' | 'edit' | 'music' | 'card'
 
 export interface ImageParams {
   prompt: string
@@ -57,10 +59,14 @@ export interface Job {
   kind: Kind
   createdAt: number
   status: JobStatus
-  params: ImageParams | EditParams | MusicParams
+  params: ImageParams | EditParams | MusicParams | CardParams
   enriched?: { prompt?: string; style?: string; lyrics?: string }
   /** For edit jobs: what ComfyUI stored the uploaded source as. */
   uploaded?: { name: string; subfolder: string }
+  /** The seed actually used (params.seed when set, otherwise the random one drawn at run time). */
+  seed?: number
+  /** For card jobs: one OCR report per output, in output order, once the lettering has been read. */
+  lettering?: LetteringReport[]
   promptId?: string
   /** 0..1 step progress inside the current node, or null when unknown (honest: no fake bars). */
   progress: number | null

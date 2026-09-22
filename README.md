@@ -79,6 +79,64 @@ which gives well over 100,000 distinct image prompts and thousands of music styl
 bpm that fits its genre. About one in seven picks is one of the hand-written seeds in
 `suggestions.ts`. Edit either file to steer the vocabulary.
 
+## Cards
+
+The **Card** tab is the Card-Generator workflow (`~/Documents/Card-Generator/AGENTS.md`) without the
+agent. You fill in who the card is for, their age, what they love, the lettering (top lines and a
+sign-off, exactly as they must appear), a look and a palette; the app assembles the prompt in the
+guide's order (format + medium, top lettering, scene, bottom lettering, lettering lock, palette +
+mood) and shows it in full, editable, with a word count against the 320-word ceiling.
+
+- **Gemma drafts only the scene paragraph**, at form time, into an editable box (`card_scene` brief
+  in `src/shared/enrich.ts`). The lettering is never given to an LLM, and rendering needs no Gemma,
+  so re-rolls are pure ComfyUI time.
+- **Lettering is read back by two independent literal readers**: macOS Vision with language
+  correction off (`src/main/ocr.ts`, compiled on first use with the Xcode command line tools) and
+  RapidOCR (PaddleOCR v4 on ONNX, `scripts/card-ocr.py`, installed by `deploy.sh` as
+  `~/.local/bin/card-ocr` on the machine that runs ComfyUI and called there over ssh, so nothing is
+  downloaded first). Neither has a language model, so neither "corrects" a real misspelling; each
+  has its own blind spot (Vision reads a fat rounded D as O, RapidOCR drops spaces), so a phrase is
+  confirmed when either reads it letter for letter and the comparison ignores spaces. Benchmarked on
+  14 cards / 43 phrases on 2026-09-22: Vision 40 exact, RapidOCR 43, together no false alarm;
+  Tesseract (20) and a 4B vision LLM (42, but it invents doubled words) were rejected. Verdicts:
+  pass / look at these letters / wrong. When no candidate is at least a "look", the same prompt goes
+  again on a new seed, up to the attempts you allow (the guide's budget is 6).
+- Sizes are the tested card presets (880x1232 for a standard 5x7 portrait; `final` is 1.6 MP), 8
+  steps, candidates rendered as one batch. Same seed + edited prompt keeps the layout; **Re-roll**
+  and **Edit this prompt** on every finished card do the two moves of the guide's playbook.
+- Print advice: `final.png` at 5x7 in on heavy matte card stock, or a photo service as a 5x7.
+
+## What makes generation fast (and what makes it slow)
+
+Measured on the Studio (M4 Max, 36 GB) on 2026-09-22, Z-Image at 880x1232, 8 steps at about
+6.4 s each: with the old `--cache-none --disable-smart-memory` flags every render took **102 s**,
+about 40 s of it reloading the 7.7 GB text encoder and the 11.7 GB UNet. Without those flags
+(applied that day to Comfy Desktop's `launchArgs` in `installations.json` and to
+`scripts/comfy-start.sh`) a cold render takes 94 s, a **warm re-roll 54 s** and a warm edited prompt
+57 s; encoding the prompt on the CPU costs only ~4 s, so `--gpu-only` was not worth its risk.
+ComfyUI 0.35's default RAM-pressure cache evicts by itself when memory gets tight. The app's side:
+
+- **Pre-warming**: once a card has its scene (on opening the tab, after a Gemma draft, after editing
+  the scene), the app submits a 1-step 256x256 prompt that loads the Z-Image weights while you are
+  still reading (`warmupGraph`, `JobManager.warm`). Measured: 48 s from cold, 0.0 s when already
+  warm (ComfyUI answers from cache), and the real render afterwards takes 55 s instead of 94.
+  Idle only, debounced to once a minute, and it releases Gemma first.
+- **Step presets** on the Card tab: `standard` and `final` keep the model's 8-step recipe; `quick`
+  (6 steps, 40 s warm) and `draft` (4 steps, 28 s) are there for iterating; `final` (1072x1504) is 91 s warm. In the test renders the
+  lettering held at both, but four samples are not proof, so 8 steps stays the default.
+- Card renders use no Gemma at job time; a scene drafted in the form leaves Gemma resident, and the
+  job pump releases it before submitting anyway (`gemmaResident()` in `src/main/enrich.ts`).
+- Gemma as configured (`gemma-4-26b-a4b-it-6bit`, 21 GB) cannot share the machine with Z-Image
+  (20 GB): every Gemma load goes through `JobManager.loadGemma`, which first POSTs ComfyUI `/free`
+  (unload models, drop the node cache). Drafting a scene is refused while a job is running.
+- Consecutive jobs of one model family reuse whatever ComfyUI keeps resident; a switch (image → music)
+  frees the old weights first (`modelFamily` in `src/shared/graphs.ts`). On the Studio,
+  `~/.config/comfy-mcp/idle-unload.py` frees the resident models after 15 idle minutes, and
+  `~/bin/comfy-memory-guard.sh` kills ComfyUI if memory runs out.
+- A job left running by a crash or a relaunch is reconciled with ComfyUI's history at the next start
+  (its result is recovered rather than lost), and a power-save blocker keeps the app awake while a
+  remote render is in flight.
+
 ## Image editing
 
 The **Edit** tab takes a source image and an instruction. The image is uploaded to

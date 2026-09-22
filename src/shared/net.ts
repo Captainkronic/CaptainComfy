@@ -28,3 +28,8 @@ export function comfyViewUrl(comfyHost: string, subfolder: string, filename: str
   const q = new URLSearchParams({ filename, subfolder, type })
   return `${comfyHost.replace(/\/+$/, '')}/view?${q.toString()}`
 }
+
+/** The name a result is cached under locally (results/ in the app's data folder) for OCR and display. */
+export function resultCacheName(o: { subfolder: string; filename: string }): string {
+  return [o.subfolder, o.filename].filter(Boolean).join('_').replace(/[^A-Za-z0-9._-]+/g, '_')
+}

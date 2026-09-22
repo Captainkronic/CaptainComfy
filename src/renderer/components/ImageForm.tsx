@@ -36,7 +36,7 @@ export default function ImageForm(): JSX.Element {
       </div>
       <div className="field"><label>Seed (blank = random)</label><input type="number" value={p.seed ?? ''} onChange={(e) => up('seed', e.target.value === '' ? null : Number(e.target.value))} /></div>
       <button className="btn primary" disabled={busy || !p.prompt.trim()} onClick={() => { void submit() }}>Generate image</button>
-      <div className="hint">Z-Image Turbo. About 10 s per image at 1.0 MP on this Mac, plus ~3 s if enrichment is on.</div>
+      <div className="hint">Z-Image Turbo. Measured on the Studio at 1.1 MP: about 55 s while the model is resident, about 95 s when it has to load, plus Gemma's load and rewrite if enrichment is on.</div>
     </>
   )
 }

@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { execFile } from 'node:child_process'
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
-import { comfyViewUrl, isLoopback, LOCAL, parseLiteOut, STUDIO } from '@shared/net'
+import { comfyViewUrl, isLoopback, LOCAL, parseLiteOut, resultCacheName, STUDIO } from '@shared/net'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'node:path'
 import type { IpcApi, IpcEvents } from '@shared/ipc'
@@ -11,6 +11,7 @@ import type { Health } from '@shared/types'
 import { ComfyClient } from './comfy'
 import { enrich, omlxUp } from './enrich'
 import { JobManager } from './jobs'
+import { ocrBinary, secondReaderStatus } from './ocr'
 import { SettingsStore } from './settings'
 
 // Results are read by the renderer through this scheme instead of ComfyUI's /view URL: a file://
@@ -42,7 +43,7 @@ for (const f of ['settings.json', 'jobs.json']) {
 }
 const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'))
 const comfy = new ComfyClient(settings.get().comfyHost)
-const jobs = new JobManager({ comfy, omlx: () => ({ host: settings.get().omlxHost, model: settings.get().omlxModel, release: settings.get().releaseGemma }), emit: (j) => emit('event:job', j), file: join(app.getPath('userData'), 'jobs.json') })
+const jobs = new JobManager({ comfy, omlx: () => ({ host: settings.get().omlxHost, model: settings.get().omlxModel, release: settings.get().releaseGemma }), emit: (j) => emit('event:job', j), file: join(app.getPath('userData'), 'jobs.json'), outputDir: () => settings.get().comfyOutputDir, dataDir: app.getPath('userData'), comfyWhere: () => { const s = settings.get(); return { host: s.comfyHost, ssh: { user: s.sshUser, key: s.sshKey, host: new URL(s.comfyHost).hostname } } } })
 
 async function health(): Promise<Health> {
   const s = settings.get()
@@ -72,10 +73,17 @@ async function remoteStart(): Promise<{ ok: boolean; detail: string }> {
   return out
 }
 handle('comfy:start', async () => { const s = settings.get(); if (!isLoopback(s.comfyHost)) return remoteStart(); return comfy.start({ dir: s.comfyDir, yaml: s.comfyModelPathsYaml, input: s.comfyInputDir, output: s.comfyOutputDir, flags: s.comfyFlags }) })
+handle('comfy:warm', async (what) => jobs.warm(what))
 handle('jobs:list', async () => jobs.list())
 handle('jobs:submitImage', async (p) => jobs.submit('image', p))
 handle('jobs:submitMusic', async (p) => jobs.submit('music', p))
 handle('jobs:submitEdit', async (p) => jobs.submit('edit', p))
+handle('jobs:submitCard', async (p) => jobs.submit('card', p))
+handle('ocr:status', async () => {
+  const st = settings.get(); const w = { local: isLoopback(st.comfyHost), ssh: { user: st.sshUser, key: st.sshKey, host: new URL(st.comfyHost).hostname } }
+  const [a, b] = await Promise.all([ocrBinary(app.getPath('userData')), secondReaderStatus(w)])
+  return { ok: a.binary !== null || b.ok, detail: `${a.detail}; ${b.detail}` }
+})
 handle('dialog:pickImage', async () => {
   const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] })
   if (r.canceled || r.filePaths.length === 0) return null
@@ -86,7 +94,11 @@ handle('dialog:pickImage', async () => {
 })
 handle('jobs:cancel', async (id) => jobs.cancel(id))
 handle('jobs:clearFinished', async () => jobs.clearFinished())
-handle('enrich:preview', async (mode, text) => { const s = settings.get(); return enrich(s.omlxHost, s.omlxModel, mode, text) })
+handle('enrich:preview', async (mode, text) => {
+  const s = settings.get()
+  if (jobs.busy()) return { text, used: false, detail: 'A job is running; Gemma would not fit beside it. Try again when it finishes.' }
+  await jobs.loadGemma(s.omlxHost, s.omlxModel); return enrich(s.omlxHost, s.omlxModel, mode, text)
+})
 const outputPath = (o: { subfolder: string; filename: string }): string => join(settings.get().comfyOutputDir, o.subfolder, o.filename)
 handle('shell:reveal', async (o) => shell.showItemInFolder(outputPath(o)))
 handle('output:save', async (o) => {
@@ -141,6 +153,9 @@ void app.whenReady().then(async () => {
     const root = resolve(o.type === 'input' ? s.comfyInputDir : s.comfyOutputDir)
     const file = resolve(root, o.subfolder, o.filename)
     if (file.startsWith(root + sep) && existsSync(file)) return net.fetch(pathToFileURL(file).toString())
+    // A copy fetched for OCR serves the same bytes without a second trip over the tailnet.
+    const cached = join(app.getPath('userData'), 'results', resultCacheName(o))
+    if (o.type === 'output' && existsSync(cached)) return net.fetch(pathToFileURL(cached).toString())
     // Remote path: pull it from ComfyUI over the tailnet. Node's fetch sends no Sec-Fetch-Site
     // header, so ComfyUI's cross-site 403 does not apply here the way it does to the renderer.
     try {
@@ -154,6 +169,28 @@ void app.whenReady().then(async () => {
   // Headless test hook: CAPTAINCOMFY_TEST_EDIT=/path/to.png submits one edit job at startup.
   const testEdit = process.env['CAPTAINCOMFY_TEST_EDIT']
   if (testEdit) setTimeout(() => { jobs.submit('edit', { imagePath: testEdit, imageName: testEdit.split('/').pop() ?? testEdit, instruction: process.env['CAPTAINCOMFY_TEST_INSTRUCTION'] ?? 'make it a rainy evening', enrich: true, megapixels: 1, steps: 4, seed: 7 }) }, 3000)
+  // Headless card test: CAPTAINCOMFY_TEST_CARD=/path/draft.json (a CardDraft; an empty scene is drafted by Gemma
+  // first) runs the whole pipeline, writes the finished jobs of the series to CAPTAINCOMFY_TEST_OUT and quits.
+  const testCard = process.env['CAPTAINCOMFY_TEST_CARD']
+  if (testCard) setTimeout(() => { void (async () => {
+    const { cardPrompt, draftToParams, sceneRequest } = await import('@shared/card')
+    const draft = JSON.parse(readFileSync(testCard, 'utf8')) as import('@shared/card').CardDraft
+    const s = settings.get()
+    if (!draft.scene.trim()) { await jobs.loadGemma(s.omlxHost, s.omlxModel); const r = await enrich(s.omlxHost, s.omlxModel, 'card_scene', sceneRequest(draft)); console.log(`[test-card] scene: ${r.detail}\n${r.text}`); if (!r.used) { console.log('[test-card] no scene draft; aborting'); app.quit(); return } draft.scene = r.text }
+    const params = draftToParams(draft, `test-${Date.now().toString(36)}`)
+    console.log(`[test-card] prompt (${cardPrompt(draft).split(/\s+/).length} words):\n${params.prompt}`)
+    jobs.submit('card', params)
+    const live = (): boolean => jobs.list().some((j) => j.kind === 'card' && (j.params as import('@shared/card').CardParams).series === params.series && (j.status === 'queued' || j.status === 'enriching' || j.status === 'running'))
+    await new Promise((r) => setTimeout(r, 3000))
+    while (live()) await new Promise((r) => setTimeout(r, 2000))
+    const done = jobs.list().filter((j) => j.kind === 'card' && (j.params as import('@shared/card').CardParams).series === params.series)
+    const out = process.env['CAPTAINCOMFY_TEST_OUT']; if (out) writeFileSync(out, JSON.stringify(done, null, 2))
+    console.log(`[test-card] finished: ${done.map((j) => `${j.status} ${j.progressLabel} ${j.outputs.map((o) => o.filename).join(',')}`).join(' | ')}`)
+    app.quit()
+  })() }, 2000)
+  // Headless UI check: CAPTAINCOMFY_SHOT=/path.png [CAPTAINCOMFY_TAB=card] captures the window after 4 s and quits.
+  const shot = process.env['CAPTAINCOMFY_SHOT']
+  if (shot) setTimeout(() => { void (async () => { try { const tab = process.env['CAPTAINCOMFY_TAB']; if (tab) { await win?.webContents.executeJavaScript(`document.querySelector('.tab[data-tab="${tab}"]')?.click()`) } await new Promise((r) => setTimeout(r, Number(process.env['CAPTAINCOMFY_SHOT_DELAY'] ?? 800))); const img = await win?.webContents.capturePage(); if (img) writeFileSync(shot, img.toPNG()); console.log(`[shot] wrote ${shot}`) } catch (e) { console.log('[shot] failed ' + String(e)) } app.quit() })() }, 3500)
   if (process.env['LITE_PROBE']) setTimeout(() => { void win?.webContents.executeJavaScript("(() => { const imgs=[...document.querySelectorAll('.grid img')]; return JSON.stringify({ cards: document.querySelectorAll('.card').length, grids: document.querySelectorAll('.grid').length, imgs: imgs.map(i => ({ src: i.src.slice(0, 80), complete: i.complete, w: i.naturalWidth, h: i.naturalHeight, box: i.getBoundingClientRect().width + 'x' + i.getBoundingClientRect().height })) }) })()").then((r) => console.log('[probe] ' + String(r))).catch((e) => console.log('[probe] failed ' + String(e))) }, 6000)
   setInterval(() => { void health().then((h) => emit('event:health', h)); jobs.watchdog() }, 10_000)
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) win = createWindow() })

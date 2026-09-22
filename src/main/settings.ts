@@ -10,11 +10,12 @@ export const DEFAULTS: Settings = {
   comfyModelPathsYaml: join(HOME, 'Library/Application Support/Comfy Desktop/instance-model-paths/inst-1786875206899.yaml'),
   comfyInputDir: join(HOME, 'ComfyUI-Shared/input'),
   comfyOutputDir: join(HOME, 'ComfyUI-Shared/output'),
-  // The flags proven on this Mac on 2026-09-13. bf16 is the correct precision for these
-  // models on Metal; reserve/cache/smart-memory keep a 36 GB machine out of swap storms.
-  comfyFlags: ['--reserve-vram', '6', '--cache-none', '--disable-smart-memory', '--bf16-unet', '--bf16-vae', '--bf16-text-enc', '--listen', '127.0.0.1,100.120.207.33'],
+  // bf16 is the correct precision for these models on Metal. --cache-none and --disable-smart-memory
+  // were dropped on 2026-09-22: they cost ~40 s of model reloading per render, and ComfyUI 0.35's
+  // RAM-pressure cache plus the app's /free calls keep the 36 GB Studio out of swap without them.
+  comfyFlags: ['--reserve-vram', '6', '--bf16-unet', '--bf16-vae', '--bf16-text-enc', '--listen', '127.0.0.1,100.120.207.33'],
   omlxHost: process.env['OMLX_HOST'] ?? 'http://127.0.0.1:8000/v1',
-  omlxModel: process.env['OMLX_MODEL'] ?? 'gemma-4-E4B-it-MLX-4bit',
+  omlxModel: process.env['OMLX_MODEL'] ?? 'gemma-4-26b-a4b-it-6bit',
   releaseGemma: true,
   sshUser: 'adam',
   sshKey: join(HOME, '.ssh', 'id_ed25519'),

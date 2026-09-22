@@ -83,6 +83,26 @@ export class ComfyClient {
     return j.prompt_id
   }
 
+  /** Drop resident models and the node cache. ComfyUI acts on the flags at once when idle; the short
+   *  wait keeps the next submit from racing ahead of it. */
+  async free(): Promise<void> {
+    await fetch(`${this.base}/free`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unload_models: true, free_memory: true }), signal: AbortSignal.timeout(20_000) }).catch(() => undefined)
+    // The flags take effect once the running prompt (a warm-up, say) has finished: wait for that.
+    for (let i = 0; i < 45; i++) {
+      const q = await fetch(`${this.base}/queue`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json() as Promise<{ queue_running: unknown[] }>).catch(() => null)
+      if (!q || q.queue_running.length === 0) break
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+    await new Promise((r) => setTimeout(r, 2000))
+  }
+
+  /** The bytes of a result, wherever ComfyUI is. */
+  async fetchOutput(o: { filename: string; subfolder: string; type: string }): Promise<Buffer> {
+    const res = await fetch(this.viewUrl(o.filename, o.subfolder, o.type), { signal: AbortSignal.timeout(120_000) })
+    if (!res.ok) throw new Error(`ComfyUI ${res.status} while fetching ${o.filename}`)
+    return Buffer.from(await res.arrayBuffer())
+  }
+
   async cancel(promptId: string): Promise<void> {
     await fetch(`${this.base}/queue`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delete: [promptId] }) }).catch(() => undefined)
     // If it is the running one, /queue delete is a no-op; interrupt covers that case.

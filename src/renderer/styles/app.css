@@ -50,3 +50,18 @@ audio { width: 100%; }
 
 .field label { display: flex; align-items: center; justify-content: space-between; }
 .btn.suggest { text-transform: none; letter-spacing: 0; font-size: 11.5px; padding: 2px 8px; }
+
+/* Card tab */
+.label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.label-row label { margin-bottom: 0; }
+.field .toggle.mini, .label-row .toggle.mini { padding: 2px 8px; gap: 6px; font-size: 11.5px; text-transform: none; letter-spacing: 0; color: var(--fg-muted); margin: 0; }
+.hint.warn, .meta.warn { color: var(--warn); }
+.prompt-preview summary { cursor: pointer; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-dim); display: flex; gap: 10px; align-items: center; }
+.prompt-preview[open] summary { margin-bottom: 6px; }
+.prompt-preview textarea { width: 100%; background: var(--bg-input); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: inherit; resize: vertical; }
+.verdict { margin-top: 6px; font-size: 12px; line-height: 1.4; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); color: var(--fg-muted); }
+.verdict.pass { border-color: var(--ok); color: var(--ok); }
+.verdict.check { border-color: var(--warn); color: var(--warn); }
+.verdict.fail { border-color: var(--danger); color: var(--danger); }
+.verdict.pending { border-style: dashed; }
+.verdict .notes { color: var(--fg-dim); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; margin-top: 2px; }

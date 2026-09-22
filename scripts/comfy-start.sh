@@ -11,7 +11,11 @@ up() { curl -s --max-time 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PO
 if up; then echo "already running"; exit 0; fi
 [ -x "$COMFY_DIR/.venv/bin/python" ] || { echo "no ComfyUI at $COMFY_DIR"; exit 1; }
 cd "$COMFY_DIR"
-nohup ./.venv/bin/python main.py --enable-manager --reserve-vram 6 --cache-none --disable-smart-memory \
+# No --cache-none / --disable-smart-memory since 2026-09-22: with ComfyUI's RAM-pressure cache the
+# models stay resident between prompts (a warm Z-Image render takes 54 s instead of 94 s), the app
+# frees them before Gemma loads or the model family changes, and idle-unload.py frees them after
+# 15 idle minutes. Comfy Desktop's launchArgs in installations.json carry the same set.
+nohup ./.venv/bin/python main.py --enable-manager --reserve-vram 6 \
   --bf16-unet --bf16-vae --bf16-text-enc --listen "$LISTEN" --port "$PORT" --disable-auto-launch \
   --extra-model-paths-config "$YAML" --input-directory "$INPUT" --output-directory "$OUTPUT" >> "$LOG" 2>&1 < /dev/null &
 disown
