@@ -92,8 +92,8 @@ The Image tab's **Model** toggle (`src/shared/models.ts`) offers what the Studio
 (the default; 8 steps, no guidance, and the one that draws lettering),
 **Juggernaut Z** (RunDiffusion's fine-tune of Z-Image *Base*: 35 steps at CFG 6 per its model card,
 two model passes per step, measured 380 s warm at 1 MP; beautiful, film-like, slow), and the SDXL
-checkpoints **Juggernaut XI** and **RealVisXL V5** (30 steps at CFG 5, DPM++ 2M Karras, sizes snapped
-to 8, the fp16-fix VAE, Balanced 47 s warm). Each model carries its own quality table, and the job
+checkpoints **Juggernaut XI**, **Juggernaut Ragnarok** and **RealVisXL V5** (30 steps at CFG 5,
+DPM++ 2M Karras, sizes snapped to 8, the fp16-fix VAE, Balanced 47 s warm). Each model carries its own quality table, and the job
 pump treats each as its own family, freeing one before loading another. Wan 2.2 (video) and Stable
 Audio are not image models.
 
@@ -125,6 +125,7 @@ Measured 2026-09-22 on the 36 GB Studio: free RAM at idle minus the floor during
 | Z-Image Turbo | 11.5 GB UNet + 7.5 GB Qwen3 | **20.8 GB** | 5.6 GB (4.0 GB at 1.5 MP) | 1.5 MP |
 | Juggernaut Z | the same, plus a guidance pass | **24.0 GB** | 5.4 GB | **1.0 MP** |
 | Juggernaut XI | one 6.6 GB SDXL checkpoint | **12.7 GB** | 18.3 GB (17.1 at 1.5 MP) | 1.5 MP |
+| Juggernaut Ragnarok | one 6.6 GB SDXL checkpoint | **12.5 GB** | ~17.5 GB (cost-derived) | 1.5 MP |
 | RealVisXL V5 | one 6.5 GB SDXL checkpoint | **12.3 GB** | 14.8 GB (13.6 at 1.5 MP) | 1.5 MP |
 
 The Z-Image family is heavy because its 11.5 GB UNet needs the 7.5 GB Qwen3 text encoder beside it,

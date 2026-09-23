@@ -3,7 +3,7 @@
  * guidance, sampler, negative prompt), size snapping and its own quality presets. Everything else
  * (the form, the job pump, the memory choreography) is model-agnostic.
  */
-export type ImageModel = 'zimage' | 'juggernaut-z' | 'juggernaut-xi' | 'realvisxl'
+export type ImageModel = 'zimage' | 'juggernaut-z' | 'juggernaut-xi' | 'juggernaut-ragnarok' | 'realvisxl'
 export type ImageQuality = 'draft' | 'fast' | 'balanced' | 'high' | 'ultra' | 'print'
 export interface QualityPreset { megapixels: number; steps: number; upscale: number; label: string; hint: string; seconds: number }
 
@@ -76,6 +76,22 @@ export const IMAGE_MODELS: Record<ImageModel, ImageModelSpec> = {
     files: { ckpt: 'Juggernaut-XI-byRunDiffusion.safetensors', vae: 'sdxl_vae_fp16_fix.safetensors' },
     recipe: { cfg: 5, sampler: 'dpmpp_2m', scheduler: 'karras', negative: NEGATIVE }, snap: 8,
     memory: { peakGb: 12.7, freeGb: 17.1, maxMegapixels: 1.5 },
+    presets: {
+      draft: q(0.5, 20, 1, 'Draft', '0.5 MP, 20 steps', 18), fast: q(1.0, 20, 1, 'Fast', '1 MP, 20 steps', 33), balanced: q(1.0, 30, 1, 'Balanced', '1 MP, 30 steps', 47),
+      high: q(1.5, 30, 1, 'High', '1.5 MP, 30 steps', 79), ultra: q(1.5, 40, 1, 'Ultra', '1.5 MP, 40 steps', 97), print: q(1.5, 30, 2, 'Print', '1.5 MP, 2x upscale', 83)
+    }
+  },
+  // RunDiffusion's Juggernaut XL "Ragnarok", copied to the Studio on 2026-09-23. Same SDXL
+  // architecture as Juggernaut XI down to the file size (6.62 vs 6.61 GB) and the same recipe, so it
+  // shares the family's preset table. Measured on its own: 12.5 GB peak at 1 MP (XI measured 12.7),
+  // 73 s cold, 55 s warm, 98 s at 1.5 MP -- taken while the Studio was busier than when the other
+  // models were timed, so the shared seconds are the fair figures and the memory floor below is
+  // derived from the measured cost against a normal idle machine rather than that busy baseline.
+  'juggernaut-ragnarok': {
+    label: 'Juggernaut Ragnarok', blurb: 'SDXL photoreal, RunDiffusion\'s Juggernaut XL Ragnarok; 30 steps at CFG 5', kind: 'sdxl', family: 'sdxl-ragnarok',
+    files: { ckpt: 'juggernautXL_ragnarok.safetensors', vae: 'sdxl_vae_fp16_fix.safetensors' },
+    recipe: { cfg: 5, sampler: 'dpmpp_2m', scheduler: 'karras', negative: NEGATIVE }, snap: 8,
+    memory: { peakGb: 12.5, freeGb: 17.5, maxMegapixels: 1.5 },
     presets: {
       draft: q(0.5, 20, 1, 'Draft', '0.5 MP, 20 steps', 18), fast: q(1.0, 20, 1, 'Fast', '1 MP, 20 steps', 33), balanced: q(1.0, 30, 1, 'Balanced', '1 MP, 30 steps', 47),
       high: q(1.5, 30, 1, 'High', '1.5 MP, 30 steps', 79), ultra: q(1.5, 40, 1, 'Ultra', '1.5 MP, 40 steps', 97), print: q(1.5, 30, 2, 'Print', '1.5 MP, 2x upscale', 83)
