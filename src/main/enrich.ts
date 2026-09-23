@@ -30,6 +30,21 @@ export async function omlxUp(host: string, model: string): Promise<{ ok: boolean
   } catch (err) { return { ok: false, detail: err instanceof Error ? err.message : String(err) } }
 }
 
+/** How widely to sample, per mode. At 0.7 Gemma converges hard on a favourite phrasing for a given
+ *  input: the same lyric theme opened "Sunlight dancing on the glass" in 6 runs out of 6, and the
+ *  same image idea opened "An expressive oil painting of a vibrant red fox" in 4 out of 4. The whole
+ *  texts always differed — it is the phrasing that repeats, not the output — so the creative modes
+ *  get a wider sampler. Measured over 6 runs a theme, distinct openings went 3/6 -> 6/6 on one lyric
+ *  theme and 1/6 -> 2/6 on a stickier one. Temperature alone did not do it; top_p is what helped.
+ *  The two literal modes stay where they are: an edit instruction and a tag list want precision,
+ *  not variety, and normalizeStyleTags has to be able to parse the style back. */
+const SAMPLING: Record<EnrichMode, { temperature: number; top_p?: number }> = {
+  image: { temperature: 1.0, top_p: 0.95 },
+  image_edit: { temperature: 0.7 },
+  music_style: { temperature: 0.7 },
+  music_lyrics: { temperature: 1.1, top_p: 0.95 }
+}
+
 /** Never throws: on any failure the original text is returned with used=false and a reason. */
 export async function enrich(host: string, model: string, mode: EnrichMode, text: string, maxTokens = MAX_TOKENS[mode], systemOverride?: string): Promise<EnrichResult> {
   const original = text.trim()
@@ -38,7 +53,7 @@ export async function enrich(host: string, model: string, mode: EnrichMode, text
   try {
     const res = await fetch(`${host.replace(/\/+$/, '')}/chat/completions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(180_000),
-      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.7, messages: [{ role: 'system', content: systemOverride ?? BRIEFS[mode] }, { role: 'user', content: original }] })
+      body: JSON.stringify({ model, max_tokens: maxTokens, ...SAMPLING[mode], messages: [{ role: 'system', content: systemOverride ?? BRIEFS[mode] }, { role: 'user', content: original }] })
     })
     if (!res.ok) return { text: original, used: false, detail: `oMLX HTTP ${res.status}` }
     resident = true
