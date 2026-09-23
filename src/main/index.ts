@@ -1,9 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
 import { pathToFileURL } from 'node:url'
 import { execFile } from 'node:child_process'
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
-import { comfyViewUrl, isLoopback, LOCAL, parseLiteOut, resultCacheName, STUDIO } from '@shared/net'
+import { comfyViewUrl, isLoopback, LOCAL, parseLiteOut, resultCacheName, safeResultName, STUDIO } from '@shared/net'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'node:path'
 import type { IpcApi, IpcEvents } from '@shared/ipc'
@@ -112,9 +112,12 @@ handle('shell:reveal', async (o) => shell.showItemInFolder(outputPath(o)))
 handle('output:save', async (o) => {
   const r = await dialog.showSaveDialog({ defaultPath: join(app.getPath('downloads'), o.filename), title: 'Save result' })
   if (r.canceled || !r.filePath) return null
+  // Read from this disk only when ComfyUI is this Mac's own. This Mac has an output folder at the
+  // same path as the Studio's, so when ComfyUI is remote a result named image_00069_.png here is a
+  // different picture from the one being saved; fetch the real bytes over the tailnet instead.
   const local = outputPath(o)
   let bytes: Buffer
-  if (existsSync(local)) bytes = readFileSync(local)
+  if (isLoopback(settings.get().comfyHost) && existsSync(local)) bytes = readFileSync(local)
   else {
     const res = await fetch(comfyViewUrl(settings.get().comfyHost, o.subfolder, o.filename, o.type), { signal: AbortSignal.timeout(120_000) })
     if (!res.ok) throw new Error(`ComfyUI ${res.status} while fetching ${o.filename}`)
@@ -122,6 +125,48 @@ handle('output:save', async (o) => {
   }
   writeFileSync(r.filePath, bytes); shell.showItemInFolder(r.filePath)
   return { path: r.filePath }
+})
+// Deleting is the one irreversible thing this app does, so it is fenced three ways: the name must be
+// an ordinary result name, the resolved path must sit inside ComfyUI's own output folder, and the user
+// has to confirm in a modal dialog. Only then is the PNG unlinked — on this disk when ComfyUI is
+// local, over the same ssh route the second OCR reader uses when it runs on the Studio.
+function sshRun(cmd: string): Promise<{ ok: boolean; out: string }> {
+  const s = settings.get(); const host = new URL(s.comfyHost).hostname
+  return new Promise((res) => {
+    execFile('/usr/bin/ssh', ['-i', s.sshKey.replace(/^~/, app.getPath('home')), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
+      '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=10', `${s.sshUser}@${host}`, cmd], { timeout: 30_000 },
+    (err, stdout, stderr) => res({ ok: !err, out: `${stdout}${stderr}`.trim() }))
+  })
+}
+handle('output:delete', async (o) => {
+  if (o.type !== 'output') return { deleted: false, detail: `${o.filename} is a ${o.type} file, not a saved result; ComfyUI clears those itself.` }
+  const rel = safeResultName(o)
+  if (!rel) return { deleted: false, detail: `Refusing to delete an unexpected path: ${o.subfolder}/${o.filename}` }
+  const s = settings.get(); const root = resolve(s.comfyOutputDir); const file = resolve(root, rel)
+  if (!file.startsWith(root + sep)) return { deleted: false, detail: `Refusing to delete anything outside ${root}` }
+  const local = isLoopback(s.comfyHost)
+  const where = local ? 'this Mac' : new URL(s.comfyHost).hostname
+  const r = win
+    ? await dialog.showMessageBox(win, {
+      type: 'warning', buttons: ['Delete', 'Cancel'], defaultId: 1, cancelId: 1, noLink: true,
+      title: 'Delete this image?', message: `Delete ${o.filename}?`,
+      detail: `The file is removed from ComfyUI's output folder on ${where}, and from this job. This cannot be undone.`
+    })
+    : { response: 1 }
+  if (r.response !== 0) return { deleted: false, detail: 'Cancelled' }
+  // The delete itself, on the machine that actually made the file. This Mac has an output folder of
+  // its own at the same path, so when ComfyUI is remote the local copy is deliberately left alone: a
+  // result named image_00069_.png there is a different picture from image_00069_.png here.
+  // A file that has already gone counts as done, so a second press cannot get stuck.
+  if (local) { try { rmSync(file, { force: true }) } catch (err) { return { deleted: false, detail: `Could not delete ${file}: ${String(err)}` } } }
+  else {
+    const res = await sshRun(`rm -f -- '${file}'`)
+    if (!res.ok) return { deleted: false, detail: `Could not delete it on ${where}: ${res.out.slice(0, 160) || 'ssh failed'}` }
+  }
+  try { rmSync(join(app.getPath('userData'), 'results', resultCacheName(o)), { force: true }) } catch { /* the cache copy is disposable */ }
+  jobs.forgetOutput(o)
+  console.log(`[lite] deleted ${o.subfolder}/${o.filename} on ${where}`)
+  return { deleted: true, detail: `Deleted ${o.filename}` }
 })
 handle('shell:open', async (o) => { await shell.openPath(outputPath(o)) })
 
@@ -157,10 +202,15 @@ void app.whenReady().then(async () => {
     const o = parseLiteOut(req.url)
     if (!o) return new Response('bad url', { status: 400 })
     const s = settings.get()
-    // Local fast path: the file is on this disk (running on the Studio).
-    const root = resolve(o.type === 'input' ? s.comfyInputDir : s.comfyOutputDir)
-    const file = resolve(root, o.subfolder, o.filename)
-    if (file.startsWith(root + sep) && existsSync(file)) return net.fetch(pathToFileURL(file).toString())
+    // Local fast path, only when ComfyUI is this Mac's own: this Mac has an input and an output
+    // folder at the same paths as the Studio's, so when ComfyUI is remote a file named
+    // image_00069_.png here is a different picture from the one asked for. Remote falls through to
+    // the fetched-for-OCR cache and then to ComfyUI itself over the tailnet.
+    if (isLoopback(s.comfyHost)) {
+      const root = resolve(o.type === 'input' ? s.comfyInputDir : s.comfyOutputDir)
+      const file = resolve(root, o.subfolder, o.filename)
+      if (file.startsWith(root + sep) && existsSync(file)) return net.fetch(pathToFileURL(file).toString())
+    }
     // A copy fetched for OCR serves the same bytes without a second trip over the tailnet.
     const cached = join(app.getPath('userData'), 'results', resultCacheName(o))
     if (o.type === 'output' && existsSync(cached)) return net.fetch(pathToFileURL(cached).toString())

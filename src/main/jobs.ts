@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { annotatedSource, cardGraph, editGraph, imageGraph, modelFamily, musicGraph, NODE_LABELS, warmupGraph, type ApiGraph } from '@shared/graphs'
 import { randomSeed } from '@shared/sizing'
+import { IMAGE_MODELS, imageModel } from '@shared/models'
 import type { EditParams, ImageParams, Job, JobStatus, Kind, MusicParams, Output } from '@shared/types'
 import { checkLettering, type CardParams, type LetteringReport } from '@shared/card'
 import type { ComfyClient, ComfyEvent } from './comfy'
@@ -116,6 +117,18 @@ export class JobManager {
   }
   clearFinished(): void { this.jobs = this.jobs.filter((j) => j.status === 'queued' || j.status === 'enriching' || j.status === 'running'); this.save() }
 
+  /** Drop a deleted result from whichever job produced it, taking its lettering report with it so a
+   *  card's verdicts keep lining up with the candidates that are still there. */
+  forgetOutput(o: { subfolder: string; filename: string }): void {
+    for (const job of this.jobs) {
+      const i = job.outputs.findIndex((x) => x.filename === o.filename && x.subfolder === o.subfolder)
+      if (i < 0) continue
+      const outputs = job.outputs.filter((_, n) => n !== i)
+      const lettering = job.lettering?.filter((_, n) => n !== i)
+      this.patch(job, lettering ? { outputs, lettering } : { outputs })
+    }
+  }
+
   private patch(job: Job, p: Partial<Job>): void { Object.assign(job, p); this.lastActivity = Date.now(); this.save(); this.d.emit(job) }
   private save(): void { try { mkdirSync(dirname(this.d.file), { recursive: true }); writeFileSync(this.d.file, JSON.stringify(this.jobs.slice(0, 200))) } catch { /* non-fatal */ } }
 
@@ -178,7 +191,10 @@ export class JobManager {
         build = (i) => cardGraph({ ...p, count: 1 }, seed + i)
       } else if (job.kind === 'image') {
         let p = job.params as ImageParams; count = Math.max(1, p.count)
-        if (p.megapixels > MAX_SAMPLE_MP) { p = { ...p, megapixels: MAX_SAMPLE_MP }; this.patch(job, { progressLabel: `${(job.params as ImageParams).megapixels} MP capped to ${MAX_SAMPLE_MP}: sampling above that kills ComfyUI on this Mac (Print upscales instead)` }) }
+        // Every model has its own ceiling, and the heavy ones sit below the global one: Juggernaut Z
+        // took the Studio to critical pressure at 1.5 MP and the guard killed ComfyUI mid-render.
+        const m = IMAGE_MODELS[imageModel(p.model)]; const cap = Math.min(MAX_SAMPLE_MP, m.memory.maxMegapixels)
+        if (p.megapixels > cap) { p = { ...p, megapixels: cap }; this.patch(job, { progressLabel: `${(job.params as ImageParams).megapixels} MP capped to ${cap}: sampling larger than that on ${m.label} trips the memory guard and kills ComfyUI (Print upscales instead)` }) }
         let prompt = job.enriched?.prompt ?? p.prompt
         if (p.enrich && !job.enriched?.prompt) {
           this.patch(job, { status: 'enriching', progressLabel: 'Loading Gemma', startedAt: Date.now() })
@@ -304,8 +320,13 @@ export class JobManager {
 
   /** A result file on this disk: ComfyUI's own output when local, otherwise a copy fetched over the tailnet. */
   private async localFile(o: Output): Promise<string> {
-    const direct = join(this.d.outputDir(), o.subfolder, o.filename)
-    if (existsSync(direct)) return direct
+    // Read from this disk only when ComfyUI is this Mac's own. This Mac has an output folder at the
+    // same path as the Studio's, so when ComfyUI is remote a result named image_00069_.png here is a
+    // different picture from the one just rendered, and the lettering gate would judge the wrong image.
+    if (isLoopback(this.d.comfyWhere().host)) {
+      const direct = join(this.d.outputDir(), o.subfolder, o.filename)
+      if (existsSync(direct)) return direct
+    }
     const dir = join(this.d.dataDir, 'results'); mkdirSync(dir, { recursive: true })
     const file = join(dir, resultCacheName(o))
     if (!existsSync(file)) writeFileSync(file, await this.d.comfy.fetchOutput(o))

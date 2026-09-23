@@ -13,6 +13,8 @@ for (const f of readdirSync(out)) if (f.endsWith('.js')) writeFileSync(join(out,
 const fix = async (n) => import(join(out, n + '.js'))
 const { sizeFor, clampSeconds, IMAGE_QUALITY, imageQualityOf, EDIT_QUALITY, editQualityOf } = await fix('sizing')
 const { imageGraph, musicGraph, editGraph } = await fix('graphs')
+const { safeResultName } = await fix('net')
+const { IMAGE_MODELS } = await fix('models')
 const { lyricsAreFinal, cleanLLMText, normalizeStyleTags, musicStyleBrief } = await fix('enrich')
 
 test('sizeFor snaps to 16 and honours aspect', () => {
@@ -27,7 +29,6 @@ test('upscale tail: RealESRGAN x4 after decode, halved for 2x, straight for 4x',
   const g1 = imageGraph({ prompt: 'x', enrich: false, aspect: '1:1', megapixels: 1, count: 1, steps: 8, seed: null }, 'f', 1)
   assert.equal(g1['11'], undefined); assert.deepEqual(g1['10'].inputs.images, ['9', 0])
 })
-const { IMAGE_MODELS } = await fix('models')
 test('image models: Turbo keeps its recipe, Juggernaut Z gets guidance and a negative, SDXL gets its own graph', () => {
   const base = { prompt: 'x', enrich: false, aspect: '1:1', megapixels: 1, count: 1, steps: 8, seed: null }
   const t = imageGraph({ ...base, model: 'zimage' }, 'p', 1); assert.equal(t['1'].inputs.unet_name, 'z_image_turbo_bf16.safetensors'); assert.equal(t['6'].class_type, 'ConditioningZeroOut'); assert.equal(t['8'].inputs.cfg, 1)
@@ -175,4 +176,32 @@ test('lettering verdicts: two literal readers, letters not words', () => {
   assert.deepEqual(letterDifferences('owen', 'oven'), ["letter 2: expected 'w', OCR read 'v'"])
   assert.deepEqual(letterDifferences('sutins', 'sutin'), ["letter 6: 's' is missing in the OCR reading"])
   assert.deepEqual(letterDifferences('mia', 'miia'), ["after letter 2: OCR read an extra 'i'"])
+})
+
+test('safeResultName: only ordinary result names, nothing that climbs out or carries shell syntax', () => {
+  assert.equal(safeResultName({ subfolder: 'lite', filename: 'image_00069_.png' }), 'lite/image_00069_.png')
+  assert.equal(safeResultName({ subfolder: '', filename: 'ComfyUI_00001_.png' }), 'ComfyUI_00001_.png')
+  assert.equal(safeResultName({ subfolder: 'lite/card', filename: 'a b-c.png' }), 'lite/card/a b-c.png')
+  for (const bad of [
+    { subfolder: '..', filename: 'x.png' },                 // climbs a level
+    { subfolder: 'lite/../..', filename: 'x.png' },
+    { subfolder: '', filename: '../../.ssh/id_ed25519' },
+    { subfolder: '', filename: '.hidden' },                 // hidden file
+    { subfolder: '', filename: "x'; rm -rf ~ #.png" },      // would break out of the ssh quoting
+    { subfolder: '', filename: '$(whoami).png' },
+    { subfolder: '', filename: '' }
+  ]) assert.equal(safeResultName(bad), null, JSON.stringify(bad))
+})
+
+test('no preset asks a model for more pixels than it survived on the Studio', () => {
+  for (const [key, m] of Object.entries(IMAGE_MODELS)) {
+    assert.ok(m.memory.peakGb > 0 && m.memory.maxMegapixels > 0, `${key} has no measured memory`)
+    for (const [tier, preset] of Object.entries(m.presets)) {
+      assert.ok(preset.megapixels <= m.memory.maxMegapixels,
+        `${key} ${tier} samples ${preset.megapixels} MP but ${m.label} tops out at ${m.memory.maxMegapixels} MP`)
+    }
+  }
+  // Juggernaut Z is the heavy one: 1 MP only, and Print still reaches print size through the upscaler.
+  assert.equal(IMAGE_MODELS['juggernaut-z'].memory.maxMegapixels, 1.0)
+  assert.equal(IMAGE_MODELS['juggernaut-z'].presets.print.upscale, 2)
 })

@@ -52,6 +52,11 @@ Results are fetched by the app's main process from ComfyUI's `/view` endpoint an
 handed to the UI through `lite-out://`, so nothing needs to be mounted or shared.
 Every result has **Download** (saves to a location you pick, default ~/Downloads, fetched over the
 tailnet when remote). "Show in Finder" appears only where the output folder actually exists (the Studio).
+**🗑 Delete** removes the PNG for good, after a modal confirmation: on this Mac when ComfyUI is local,
+otherwise over ssh on the machine that made it — never the local copy, because both Macs keep an
+output folder at the same path and a name like `image_00069_.png` exists on each with different
+pictures inside. The name has to pass `safeResultName` first, so only ordinary result names resolve,
+and the result is then dropped from the job (with its lettering verdict, for a card).
 
 **Studio side (done on 2026-09-13):** Comfy Desktop's launch args include
 `--listen 127.0.0.1,100.120.207.33`, so ComfyUI listens on loopback *and* its
@@ -116,6 +121,26 @@ checkpoints **Juggernaut XI** and **RealVisXL V5** (30 steps at CFG 5, DPM++ 2M 
 to 8, the fp16-fix VAE because Juggernaut XI's own VAE decodes to black in reduced precision;
 Balanced 47 s warm). Each model carries its own quality table, and the job pump treats each as its
 own family, freeing one before loading another. Wan 2.2 (video) and Stable Audio are not image models.
+
+### What each one costs the Studio
+
+Measured 2026-09-22 on the 36 GB Studio: free RAM at idle minus the floor during a render, at 1 MP.
+
+| Model | Weights | Peak | Free while rendering | Largest canvas |
+|---|---|---|---|---|
+| Z-Image Turbo | 11.5 GB UNet + 7.5 GB Qwen3 | **20.8 GB** | 5.6 GB (4.0 GB at 1.5 MP) | 1.5 MP |
+| Juggernaut Z | the same, plus a guidance pass | **24.0 GB** | 5.4 GB | **1.0 MP** |
+| Juggernaut XI | one 6.6 GB SDXL checkpoint | **12.7 GB** | 18.3 GB (17.1 at 1.5 MP) | 1.5 MP |
+| RealVisXL V5 | one 6.5 GB SDXL checkpoint | **12.3 GB** | 14.8 GB (13.6 at 1.5 MP) | 1.5 MP |
+
+The Z-Image family is heavy because its 11.5 GB UNet needs the 7.5 GB Qwen3 text encoder beside it,
+where an SDXL checkpoint carries its UNet, both CLIPs and a VAE in one 6.6 GB file. CFG above 1 adds
+a second model pass per step, which is why Juggernaut Z costs ~3 GB more than Turbo on the same
+weights — and why at 1.5 MP it reached critical kernel pressure and `comfy-memory-guard.sh` SIGKILLed
+ComfyUI mid-render. Its ceiling is therefore 1.0 MP: High and Ultra buy quality with steps, and Print
+reaches print size through the tiled RealESRGAN upscale, which costs almost nothing.
+`ImageModelSpec.memory` holds these figures, the form shows them under the Model toggle, and the pump
+caps any job to its model's `maxMegapixels`.
 
 ## What makes generation fast (and what makes it slow)
 

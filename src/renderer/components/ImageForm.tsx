@@ -34,12 +34,15 @@ export default function ImageForm(): JSX.Element {
       </div>
       <label className="toggle"><input type="checkbox" checked={p.enrich} onChange={(e) => up('enrich', e.target.checked)} /> Enrich with Gemma</label>
       <div className="field"><label>Model</label>
-        <Segmented options={(Object.keys(IMAGE_MODELS) as ImageModel[]).map((k) => ({ key: k, label: IMAGE_MODELS[k].label, hint: IMAGE_MODELS[k].kind === 'sdxl' ? 'SDXL' : k === 'zimage' ? 'Z-Image, distilled' : 'Z-Image, base' }))} value={model} onChange={setModel} />
+        <Segmented options={(Object.keys(IMAGE_MODELS) as ImageModel[]).map((k) => ({ key: k, label: IMAGE_MODELS[k].label, hint: `${IMAGE_MODELS[k].kind === 'sdxl' ? 'SDXL' : k === 'zimage' ? 'Z-Image, distilled' : 'Z-Image, base'} · ~${Math.round(IMAGE_MODELS[k].memory.peakGb)} GB` }))} value={model} onChange={setModel} />
         <div className="hint">{spec.blurb}. Switching models frees the other one's weights first (they cannot share the Studio's memory), so the first render after a switch loads cold.</div>
+        <div className="hint">Measured on the Studio: about <b>{spec.memory.peakGb} GB</b> of its 36 GB while it renders, leaving roughly {spec.memory.freeGb} GB free. Extra images in one job render one after another, so they cost time, not memory.</div>
       </div>
       <div className="field"><label>Quality {quality === null && <span className="meta">custom: {p.megapixels} MP, {p.steps} steps{(p.upscale ?? 1) > 1 ? `, ${p.upscale}x upscaled` : ''}</span>}</label>
         <Segmented options={(Object.keys(presets) as ImageQuality[]).map((k) => ({ key: k, label: presets[k].label, hint: `${presets[k].hint}${presets[k].seconds ? ` · ~${presets[k].seconds} s` : ''}` }))} value={quality} onChange={(k) => setQuality(k)} />
-        <div className="hint">Balanced is the model's own recipe ({presets.balanced.steps} steps{spec.recipe.cfg > 1 ? ` at CFG ${spec.recipe.cfg}` : ''}). Above High the canvas stays at 1.5 MP (bigger does not fit the Studio's memory): Ultra adds steps, Print adds pixels with a RealESRGAN 2x upscale. Times are per image with the model resident; a cold load adds about 40 s.</div>
+        <div className="hint">Balanced is the model's own recipe ({presets.balanced.steps} steps{spec.recipe.cfg > 1 ? ` at CFG ${spec.recipe.cfg}` : ''}). {spec.memory.maxMegapixels < 1.5
+          ? `This model is too heavy to sample above ${spec.memory.maxMegapixels} MP on the Studio, so High and Ultra buy quality with steps instead, and Print gets its pixels from a RealESRGAN 2x upscale.`
+          : 'Above High the canvas stays at 1.5 MP (bigger does not fit the Studio\'s memory): Ultra adds steps, Print adds pixels with a RealESRGAN 2x upscale.'} Times are per image with the model resident; a cold load adds about 40 s.</div>
       </div>
       <div className="row">
         <div className="field"><label>Aspect</label>
@@ -52,9 +55,11 @@ export default function ImageForm(): JSX.Element {
         <summary>Advanced: detail, steps, seed</summary>
         <div className="row">
           <div className="field"><label>Detail (megapixels)</label>
+            {/* Only sizes this model survived: anything larger is refused by the pump anyway. */}
             <select value={p.megapixels} onChange={(e) => up('megapixels', Number(e.target.value))}>
-              <option value={0.5}>0.5 quick</option><option value={1}>1.0 standard</option><option value={1.5}>1.5 sharp</option>
-            </select></div>
+              {[[0.5, '0.5 quick'], [1, '1.0 standard'], [1.5, '1.5 sharp']].filter(([v]) => (v as number) <= spec.memory.maxMegapixels)
+                .map(([v, label]) => <option key={v as number} value={v as number}>{label as string}</option>)}
+            </select><div className="hint">{spec.label} tops out at {spec.memory.maxMegapixels} MP here</div></div>
           <div className="field"><label>Steps</label><input type="number" min={1} max={60} value={p.steps} onChange={(e) => up('steps', Number(e.target.value))} /><div className="hint">{spec.label}: {presets.balanced.steps} is the recipe</div></div>
         </div>
         <div className="row">

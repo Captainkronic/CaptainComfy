@@ -44,6 +44,10 @@ export interface IpcApi {
   'shell:reveal': (output: Output) => Promise<void>
   /** Save a result to a location the user picks (defaults to ~/Downloads). Works locally and over the tailnet. */
   'output:save': (output: Output) => Promise<{ path: string } | null>
+  /** Delete a result for good: asks for confirmation in a modal dialog first, then unlinks the PNG
+   *  where ComfyUI wrote it (over ssh when ComfyUI is remote), drops the local cache copy and
+   *  forgets the output. Nothing is recoverable afterwards, so the dialog is not optional. */
+  'output:delete': (output: Output) => Promise<{ deleted: boolean; detail: string }>
   'shell:open': (output: Output) => Promise<void>
 }
 export type IpcChannel = keyof IpcApi

@@ -15,7 +15,7 @@ function settingsOf(job: Job): { preset: string; items: string[] } {
   if (job.kind === 'image') {
     const p = job.params as ImageParams; const m = IMAGE_MODELS[imageModel(p.model)]; const q = imageQualityOf(p); const size = sizeFor(p.aspect, p.megapixels, m.snap); const up = p.upscale ?? 1
     const preset = `${m.label} · ${q ? m.presets[q].label : `custom: ${p.megapixels} MP, ${p.steps} steps${up > 1 ? `, ${up}x upscale` : ''}`}`
-    items.push(`${p.aspect} ${size.width}x${size.height}${up > 1 ? ` → ${size.width * up}x${size.height * up}` : ''}`, `${p.steps} steps${m.recipe.cfg > 1 ? `, CFG ${m.recipe.cfg}` : ''}`)
+    items.push(`${p.aspect} ${size.width}x${size.height}${up > 1 ? ` → ${size.width * up}x${size.height * up}` : ''}`, `${p.steps} steps${m.recipe.cfg > 1 ? `, CFG ${m.recipe.cfg}` : ''}`, `~${m.memory.peakGb} GB peak`)
     if (p.count > 1) items.push(`${p.count} candidates`)
     items.push(p.enrich ? 'Gemma rewrote the prompt' : 'prompt as written')
     return { preset, items }
@@ -76,6 +76,25 @@ function CardActions({ job }: { job: Job }): JSX.Element {
       <button className="btn ghost" title="Same prompt, new seed" onClick={reroll}>↻ Re-roll</button>
       <button className="btn ghost" title="Put this prompt and seed in the form to edit: the layout stays, the edit applies" onClick={edit}>✎ Edit this prompt</button>
     </span>
+  )
+}
+
+/** Delete a result for good. Main puts a modal confirmation in front of it and only unlinks the PNG
+ *  once that is accepted, so there is nothing to undo here and nothing to double-check twice. */
+function DeleteButton({ o }: { o: Output }): JSX.Element {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const del = async (): Promise<void> => {
+    setBusy(true); setErr('')
+    try { const r = await call('output:delete', o); if (!r.deleted && r.detail !== 'Cancelled') setErr(r.detail) }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)) }
+    finally { setBusy(false) }
+  }
+  return (
+    <>
+      <button className="btn ghost danger" disabled={busy} title="Delete this file from ComfyUI's output folder for good" onClick={() => { void del() }}>{busy ? 'Deleting…' : '🗑 Delete'}</button>
+      {err && <span className="err">{err}</span>}
+    </>
   )
 }
 
@@ -143,6 +162,7 @@ function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; l
               <button className="btn ghost" onClick={() => { void call('output:save', o) }}>⬇ Download {o.filename}</button>
               {job.kind !== 'music' && <EditButton o={o} />}
               {local && <button className="btn ghost" onClick={() => { void call('shell:reveal', o) }}>Show in Finder</button>}
+              <DeleteButton o={o} />
             </span>
           ))}
         </div>

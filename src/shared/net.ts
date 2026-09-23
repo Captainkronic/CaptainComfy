@@ -33,3 +33,15 @@ export function comfyViewUrl(comfyHost: string, subfolder: string, filename: str
 export function resultCacheName(o: { subfolder: string; filename: string }): string {
   return [o.subfolder, o.filename].filter(Boolean).join('_').replace(/[^A-Za-z0-9._-]+/g, '_')
 }
+
+/** `subfolder/filename` when it is an ordinary ComfyUI result name, else null. Every segment must be
+ *  plain (letters, digits, dot, dash, underscore, space), so the joined name cannot climb out of the
+ *  output folder, name a hidden file or carry anything a remote shell would read as syntax. Delete
+ *  resolves against this and nothing else: it is the difference between removing one PNG and removing
+ *  whatever a malformed name points at. */
+const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._ -]*$/
+export function safeResultName(o: { subfolder: string; filename: string }): string | null {
+  const segments = [...o.subfolder.split('/').filter(Boolean), o.filename]
+  if (segments.some((s) => !SAFE_SEGMENT.test(s) || s === '..')) return null
+  return segments.join('/')
+}
