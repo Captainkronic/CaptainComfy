@@ -11,7 +11,7 @@ writeFileSync(join(out, 'package.json'), '{"type":"module"}')
 import { readdirSync, readFileSync } from 'node:fs'
 for (const f of readdirSync(out)) if (f.endsWith('.js')) writeFileSync(join(out, f), readFileSync(join(out, f), 'utf8').replace(/from '(\.\/[a-z]+)'/g, "from '$1.js'"))
 const fix = async (n) => import(join(out, n + '.js'))
-const { sizeFor, clampSeconds, IMAGE_QUALITY, imageQualityOf } = await fix('sizing')
+const { sizeFor, clampSeconds, IMAGE_QUALITY, imageQualityOf, EDIT_QUALITY, editQualityOf } = await fix('sizing')
 const { imageGraph, musicGraph, editGraph } = await fix('graphs')
 const { lyricsAreFinal, cleanLLMText, normalizeStyleTags, musicStyleBrief } = await fix('enrich')
 
@@ -31,6 +31,11 @@ test('image quality presets round-trip and balanced is the recipe', () => {
   assert.equal(IMAGE_QUALITY.balanced.steps, 8); assert.equal(IMAGE_QUALITY.balanced.megapixels, 1)
   for (const k of Object.keys(IMAGE_QUALITY)) assert.equal(imageQualityOf(IMAGE_QUALITY[k]), k)
   assert.equal(imageQualityOf({ megapixels: 1, steps: 7 }), null); assert.equal(imageQualityOf({ megapixels: 1.5, steps: 8, upscale: 2 }), 'print'); assert.equal(imageQualityOf({ megapixels: 1.5, steps: 8 }), 'high')
+  assert.equal(EDIT_QUALITY.balanced.steps, 4); for (const k of Object.keys(EDIT_QUALITY)) assert.equal(editQualityOf(EDIT_QUALITY[k]), k); assert.equal(editQualityOf({ megapixels: 1, steps: 6 }), null)
+  const e2 = editGraph({ imagePath: '/x.png', imageName: 'x.png', instruction: 'i', enrich: false, megapixels: 1.5, steps: 4, seed: null, upscale: 2 }, 'i', 1, 'x.png')
+  assert.equal(e2['18'].class_type, 'VAEDecodeTiled'); assert.equal(e2['22'].inputs.scale_by, 0.5); assert.deepEqual(e2['19'].inputs.images, ['22', 0])
+  const e1 = editGraph({ imagePath: '/x.png', imageName: 'x.png', instruction: 'i', enrich: false, megapixels: 2, steps: 4, seed: null }, 'i', 1, 'x.png')
+  assert.equal(e1['5'].inputs.megapixels, 1.5); assert.equal(e1['20'], undefined); assert.deepEqual(e1['19'].inputs.images, ['18', 0])
 })
 test('clampSeconds bounds', () => { assert.equal(clampSeconds(3), 10); assert.equal(clampSeconds(999), 240); assert.equal(clampSeconds(30.4), 30) })
 test('image graph wires the proven recipe', () => {

@@ -2,7 +2,7 @@ import type { JSX } from 'react'
 import { useState } from 'react'
 import type { EditParams, ImageParams, Job, Kind, MusicParams, Output } from '@shared/types'
 import { CARD_QUALITY, CARD_SHAPES, cardQualityKey, cardSize, type CardParams, type LetteringReport } from '@shared/card'
-import { IMAGE_QUALITY, imageQualityOf, sizeFor } from '@shared/sizing'
+import { EDIT_QUALITY, editQualityOf, IMAGE_QUALITY, imageQualityOf, sizeFor } from '@shared/sizing'
 import { useStore } from '../state/store'
 import { call } from '../lib'
 import { isLoopback, liteOutUrl } from '@shared/net'
@@ -26,7 +26,11 @@ function settingsOf(job: Job): { preset: string; items: string[] } {
     items.push(`attempt ${p.attempt} of ${p.attempts}`, p.verify ? 'lettering read by OCR' : 'no OCR')
     return { preset: q.label, items }
   }
-  if (job.kind === 'edit') { const p = job.params as EditParams; return { preset: 'FLUX.2 Klein edit', items: [`${p.megapixels} MP canvas`, `${p.steps} steps`, p.enrich ? 'Gemma sharpened the instruction' : 'instruction as written'] } }
+  if (job.kind === 'edit') {
+    const p = job.params as EditParams; const q = editQualityOf(p); const up = p.upscale ?? 1
+    const preset = q ? `${EDIT_QUALITY[q].label} edit` : `custom edit: ${p.megapixels} MP, ${p.steps} steps${up > 1 ? `, ${up}x upscale` : ''}`
+    return { preset, items: [`${p.megapixels} MP canvas${up > 1 ? `, ${up}x upscaled` : ''}`, `${p.steps} steps`, p.source ? 'edited a result in place' : 'uploaded file', p.enrich ? 'Gemma sharpened the instruction' : 'instruction as written'] }
+  }
   const p = job.params as MusicParams
   return { preset: 'ACE-Step', items: [`${p.seconds} s`, `${p.bpm} bpm`, `${p.steps} steps`, p.enrich ? 'Gemma expanded style and lyrics' : 'as written'] }
 }

@@ -84,9 +84,9 @@ export function annotatedSource(o: { subfolder: string; filename: string; type: 
  *  negative, cfg 1, euler, Flux2Scheduler sized from the scaled source image. Same wiring as
  *  ComfyUI's bundled image_flux2_klein_image_edit_4b_distilled template. */
 export function editGraph(p: EditParams, finalInstruction: string, seed: number, uploadedImage: string, prefix = 'lite/edit'): ApiGraph {
-  const mp = Math.min(2, Math.max(0.25, p.megapixels))
+  const mp = Math.min(1.5, Math.max(0.25, p.megapixels))   // sampling above 1.5 MP is not survivable on the Studio
   const steps = Math.min(12, Math.max(2, p.steps))
-  return {
+  const g: ApiGraph = {
     '1': { class_type: 'UNETLoader', inputs: { unet_name: MODELS.edit.unet, weight_dtype: 'default' } },
     '2': { class_type: 'CLIPLoader', inputs: { clip_name: MODELS.edit.clip, type: MODELS.edit.clipType, device: 'default' } },
     '3': { class_type: 'VAELoader', inputs: { vae_name: MODELS.edit.vae } },
@@ -104,9 +104,17 @@ export function editGraph(p: EditParams, finalInstruction: string, seed: number,
     '15': { class_type: 'Flux2Scheduler', inputs: { steps, width: ['6', 0], height: ['6', 1] } },
     '16': { class_type: 'CFGGuider', inputs: { model: ['1', 0], positive: ['10', 0], negative: ['11', 0], cfg: 1 } },
     '17': { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['13', 0], guider: ['16', 0], sampler: ['14', 0], sigmas: ['15', 0], latent_image: ['12', 0] } },
-    '18': { class_type: 'VAEDecode', inputs: { samples: ['17', 0], vae: ['3', 0] } },
+    '18': { class_type: 'VAEDecodeTiled', inputs: { samples: ['17', 0], vae: ['3', 0], tile_size: 512, overlap: 64, temporal_size: 64, temporal_overlap: 8 } },
     '19': { class_type: 'SaveImage', inputs: { images: ['18', 0], filename_prefix: prefix } }
   }
+  const up = p.upscale === 2 || p.upscale === 4 ? p.upscale : 1
+  if (up > 1) {
+    g['20'] = { class_type: 'UpscaleModelLoader', inputs: { model_name: MODELS.upscale } }
+    g['21'] = { class_type: 'ImageUpscaleWithModel', inputs: { upscale_model: ['20', 0], image: ['18', 0] } }
+    if (up === 4) g['19']!.inputs['images'] = ['21', 0]
+    else { g['22'] = { class_type: 'ImageScaleBy', inputs: { image: ['21', 0], upscale_method: 'lanczos', scale_by: up / 4 } }; g['19']!.inputs['images'] = ['22', 0] }
+  }
+  return g
 }
 
 export function musicGraph(p: MusicParams, style: string, lyrics: string, seed: number, prefix = 'audio/lite'): ApiGraph {

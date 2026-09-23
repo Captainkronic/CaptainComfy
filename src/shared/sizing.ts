@@ -36,3 +36,17 @@ export const IMAGE_QUALITY: Record<ImageQuality, { megapixels: number; steps: nu
 export function imageQualityOf(p: { megapixels: number; steps: number; upscale?: number }): ImageQuality | null {
   return ((Object.keys(IMAGE_QUALITY) as ImageQuality[]).find((k) => IMAGE_QUALITY[k].megapixels === p.megapixels && IMAGE_QUALITY[k].steps === p.steps && IMAGE_QUALITY[k].upscale === (p.upscale ?? 1))) ?? null
 }
+
+/** Edit-tab presets for FLUX.2 Klein 4B (distilled for 4 steps, so Balanced is the recipe and there is no
+ *  tier below it but a smaller canvas). Seconds measured on the Studio with Klein resident (2026-09-22). */
+export type EditQuality = 'draft' | 'balanced' | 'high' | 'ultra' | 'print'
+export const EDIT_QUALITY: Record<EditQuality, { megapixels: number; steps: number; upscale: number; label: string; hint: string; seconds: number }> = {
+  draft: { megapixels: 0.5, steps: 4, upscale: 1, label: 'Draft', hint: '0.5 MP, 4 steps', seconds: 20 },
+  balanced: { megapixels: 1.0, steps: 4, upscale: 1, label: 'Balanced', hint: '1 MP, 4 steps', seconds: 37 },
+  high: { megapixels: 1.5, steps: 4, upscale: 1, label: 'High', hint: '1.5 MP, 4 steps', seconds: 66 },
+  ultra: { megapixels: 1.5, steps: 8, upscale: 1, label: 'Ultra', hint: '1.5 MP, 8 steps', seconds: 116 },
+  print: { megapixels: 1.5, steps: 4, upscale: 2, label: 'Print', hint: '1.5 MP, 2x upscale', seconds: 71 }
+}
+export function editQualityOf(p: { megapixels: number; steps: number; upscale?: number }): EditQuality | null {
+  return ((Object.keys(EDIT_QUALITY) as EditQuality[]).find((k) => EDIT_QUALITY[k].megapixels === p.megapixels && EDIT_QUALITY[k].steps === p.steps && EDIT_QUALITY[k].upscale === (p.upscale ?? 1))) ?? null
+}

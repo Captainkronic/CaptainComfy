@@ -21,9 +21,11 @@ export interface EditParams {
   source?: { subfolder: string; filename: string; type: 'output' | 'temp' }
   instruction: string
   enrich: boolean
-  megapixels: number    // canvas size for the edit, 0.5 .. 2.0
+  megapixels: number    // canvas size for the edit, 0.5 .. 1.5
   steps: number         // Klein 4B distilled: 4
   seed: number | null
+  /** 1 (none), 2 or 4: RealESRGAN x4 after decoding, scaled to the factor. Absent means 1. */
+  upscale?: number
 }
 
 export interface MusicParams {
