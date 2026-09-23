@@ -4,8 +4,6 @@
  * specific lives here and nowhere else.
  */
 import type { EditParams, ImageParams, MusicParams } from './types'
-import type { CardParams } from './card'
-import { CARD_QUALITY, cardQualityKey, cardSize } from './card'
 import { clampSeconds, sizeFor } from './sizing'
 import { IMAGE_MODELS, imageModel, type ImageModel } from './models'
 
@@ -18,7 +16,7 @@ export const MODELS = {
 
 export type ApiGraph = Record<string, { class_type: string; inputs: Record<string, unknown> }>
 
-/** Z-Image Turbo text-to-image: res_multistep, cfg 1, shift 3. Shared by the Image and Card tabs.
+/** Z-Image Turbo text-to-image: res_multistep, cfg 1, shift 3.
  *  `upscale` 2 or 4 runs RealESRGAN x4 on the decoded image (tiled by ComfyUI, so it costs little
  *  memory) and, for 2, scales the result back by half with lanczos. Sampling above 1.5 MP is not
  *  survivable on the 36 GB Studio; this is how anything larger gets made. */
@@ -81,26 +79,10 @@ export function imageGraph(p: ImageParams, finalPrompt: string, seed: number, pr
   return m.kind === 'sdxl' ? sdxlGraph(o) : zImageGraph(o)
 }
 
-/** A greeting card: the tested card sizes, the preset's steps, N candidates as one batch. */
-export function cardGraph(p: CardParams, seed: number, prefix = 'lite/card'): ApiGraph {
-  const { width, height } = cardSize(p.shape, p.quality)
-  const q = CARD_QUALITY[cardQualityKey(p.quality)]
-  return zImageGraph({ prompt: p.prompt, width, height, batch: p.count, steps: q.steps, seed, prefix, upscale: q.upscale })
-}
-
-/** A 1-step 256x256 render that only exists to load the Z-Image weights while the user is still
- *  typing; PreviewImage keeps it out of the output folder. Identical every time, so once the node
- *  cache holds it ComfyUI answers from cache in a moment. */
-export function warmupGraph(prompt = 'warm up'): ApiGraph {
-  // With the card's own prompt, the text encoding is cached too and the real render skips it.
-  const g = zImageGraph({ prompt, width: 256, height: 256, batch: 1, steps: 1, seed: 1, prefix: 'lite/warmup' })
-  g['10'] = { class_type: 'PreviewImage', inputs: { images: ['9', 0] } }
-  return g
-}
 
 /** Which weights a job needs. Consecutive jobs of one family reuse ComfyUI's resident models; a change frees them first. */
-export function modelFamily(kind: 'image' | 'edit' | 'music' | 'card', model?: string): string {
-  return kind === 'music' ? 'ace' : kind === 'edit' ? 'klein' : kind === 'image' ? IMAGE_MODELS[imageModel(model)].family : 'zimage'
+export function modelFamily(kind: 'image' | 'edit' | 'music', model?: string): string {
+  return kind === 'music' ? 'ace' : kind === 'edit' ? 'klein' : IMAGE_MODELS[imageModel(model)].family
 }
 
 /** The name LoadImage understands for a file in ComfyUI's output or temp folder: "sub/file.png [output]". */

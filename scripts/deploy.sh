@@ -38,7 +38,7 @@ build_and_install() {   # runs on whichever machine we are on
   tail -3 "$HOME/Library/Logs/captaincomfy/main.log" 2>/dev/null || true
 }
 
-deploy_local() { say "local deploy on $(hostname)"; mkdir -p "$HOME/.local/bin"; cp "$HERE/scripts/comfy-start.sh" "$HOME/.local/bin/comfy-start"; chmod +x "$HOME/.local/bin/comfy-start"; say "installed ~/.local/bin/comfy-start (remote start target)"; say "card-ocr (RapidOCR, the second lettering reader)"; bash "$HERE/scripts/card-ocr-install.sh" || echo "card-ocr install failed; cards will be verified by Vision only"; build_and_install "$HERE"; }
+deploy_local() { say "local deploy on $(hostname)"; mkdir -p "$HOME/.local/bin"; cp "$HERE/scripts/comfy-start.sh" "$HOME/.local/bin/comfy-start"; chmod +x "$HOME/.local/bin/comfy-start"; say "installed ~/.local/bin/comfy-start (remote start target)"; build_and_install "$HERE"; }
 
 deploy_macbook() {
   say "syncing source to $MACBOOK_USER@$MACBOOK_HOST:$REMOTE_DIR"

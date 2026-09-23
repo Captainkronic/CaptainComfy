@@ -115,12 +115,6 @@ export class ComfyClient {
     }
   }
 
-  /** The bytes of a result, wherever ComfyUI is. */
-  async fetchOutput(o: { filename: string; subfolder: string; type: string }): Promise<Buffer> {
-    const res = await fetch(this.viewUrl(o.filename, o.subfolder, o.type), { signal: AbortSignal.timeout(120_000) })
-    if (!res.ok) throw new Error(`ComfyUI ${res.status} while fetching ${o.filename}`)
-    return Buffer.from(await res.arrayBuffer())
-  }
 
   async cancel(promptId: string): Promise<void> {
     await fetch(`${this.base}/queue`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delete: [promptId] }) }).catch(() => undefined)

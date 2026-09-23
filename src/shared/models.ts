@@ -1,8 +1,7 @@
 /**
  * The image models the Image tab can use, with what makes each one different: files, recipe (steps,
  * guidance, sampler, negative prompt), size snapping and its own quality presets. Everything else
- * (the form, the job pump, the memory choreography) is model-agnostic. Cards stay on Z-Image Turbo:
- * it is the one that renders lettering reliably.
+ * (the form, the job pump, the memory choreography) is model-agnostic.
  */
 export type ImageModel = 'zimage' | 'juggernaut-z' | 'juggernaut-xi' | 'realvisxl'
 export type ImageQuality = 'draft' | 'fast' | 'balanced' | 'high' | 'ultra' | 'print'

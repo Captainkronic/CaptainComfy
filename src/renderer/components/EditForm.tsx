@@ -38,7 +38,7 @@ export default function EditForm(): JSX.Element {
         {p.source && <div className="enriched"><b>Editing a result:</b> {p.imageName}, read straight from ComfyUI's output folder. The edit keeps it and saves a new image.</div>}
         <button className="btn" style={p.source ? { marginTop: 8 } : undefined} onClick={() => { void pickFile() }}>{p.source ? 'Choose a file instead…' : p.imageName ? `Change image (${p.imageName})` : 'Choose image…'}</button>
         {preview && <img src={preview} alt="" style={{ width: '100%', marginTop: 8, borderRadius: 8, border: '1px solid var(--line)' }} />}
-        {!p.source && <div className="hint">PNG, JPEG or WebP. It is uploaded to ComfyUI at job time, so this works from the MacBook too. Any result in the Image, Card or Edit tab can also be sent here with its ✎ Edit button.</div>}
+        {!p.source && <div className="hint">PNG, JPEG or WebP. It is uploaded to ComfyUI at job time, so this works from the MacBook too. Any result in the Image or Edit tab can also be sent here with its ✎ Edit button.</div>}
       </div>
       <div className="field"><label>What to change <Suggest kind="edit" current={p.instruction} onPick={(s) => up('instruction', s)} /></label>
         <textarea value={p.instruction} onChange={(e) => up('instruction', e.target.value)} placeholder="change the jacket to red, keep everything else the same" />

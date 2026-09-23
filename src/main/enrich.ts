@@ -45,7 +45,7 @@ export async function enrich(host: string, model: string, mode: EnrichMode, text
     const j = (await res.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { total_time?: number } }
     const out = cleanLLMText(j.choices?.[0]?.message?.content ?? '')
     if (!out) return { text: original, used: false, detail: 'empty reply' }
-    return { text: out, used: true, detail: `Gemma ${mode === 'card_scene' ? 'drafted it' : 'rewrote it'}${j.usage?.total_time ? ` in ${j.usage.total_time.toFixed(1)} s` : ''}` }
+    return { text: out, used: true, detail: `Gemma rewrote it${j.usage?.total_time ? ` in ${j.usage.total_time.toFixed(1)} s` : ''}` }
   } catch (err) { return { text: original, used: false, detail: `oMLX unreachable (${err instanceof Error ? err.message : String(err)}); original used` } }
 }
 

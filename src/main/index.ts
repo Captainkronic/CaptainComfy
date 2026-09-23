@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { execFile } from 'node:child_process'
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
-import { comfyViewUrl, isLoopback, LOCAL, parseLiteOut, resultCacheName, safeResultName, STUDIO } from '@shared/net'
+import { comfyViewUrl, isLoopback, LOCAL, parseLiteOut, safeResultName, STUDIO } from '@shared/net'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'node:path'
 import type { IpcApi, IpcEvents } from '@shared/ipc'
@@ -11,7 +11,6 @@ import type { Health } from '@shared/types'
 import { ComfyClient } from './comfy'
 import { enrich, omlxUp } from './enrich'
 import { JobManager } from './jobs'
-import { ocrBinary, secondReaderStatus } from './ocr'
 import { SettingsStore } from './settings'
 
 // Results are read by the renderer through this scheme instead of ComfyUI's /view URL: a file://
@@ -43,7 +42,7 @@ for (const f of ['settings.json', 'jobs.json']) {
 }
 const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'))
 const comfy = new ComfyClient(settings.get().comfyHost)
-const jobs = new JobManager({ comfy, omlx: () => ({ host: settings.get().omlxHost, model: settings.get().omlxModel, release: settings.get().releaseGemma }), emit: (j) => emit('event:job', j), file: join(app.getPath('userData'), 'jobs.json'), outputDir: () => settings.get().comfyOutputDir, dataDir: app.getPath('userData'), comfyWhere: () => { const s = settings.get(); return { host: s.comfyHost, ssh: { user: s.sshUser, key: s.sshKey, host: new URL(s.comfyHost).hostname } } }, startComfy: () => startComfy(), autoRestart: () => settings.get().autoRestartComfy })
+const jobs = new JobManager({ comfy, omlx: () => ({ host: settings.get().omlxHost, model: settings.get().omlxModel, release: settings.get().releaseGemma }), emit: (j) => emit('event:job', j), file: join(app.getPath('userData'), 'jobs.json'), startComfy: () => startComfy(), autoRestart: () => settings.get().autoRestartComfy })
 
 async function health(): Promise<Health> {
   const s = settings.get()
@@ -81,17 +80,10 @@ function startComfy(): Promise<{ ok: boolean; detail: string }> {
   return starting
 }
 handle('comfy:start', async () => startComfy())
-handle('comfy:warm', async (what, prompt) => jobs.warm(what, prompt))
 handle('jobs:list', async () => jobs.list())
 handle('jobs:submitImage', async (p) => jobs.submit('image', p))
 handle('jobs:submitMusic', async (p) => jobs.submit('music', p))
 handle('jobs:submitEdit', async (p) => jobs.submit('edit', p))
-handle('jobs:submitCard', async (p) => jobs.submit('card', p))
-handle('ocr:status', async () => {
-  const st = settings.get(); const w = { local: isLoopback(st.comfyHost), ssh: { user: st.sshUser, key: st.sshKey, host: new URL(st.comfyHost).hostname } }
-  const [a, b] = await Promise.all([ocrBinary(app.getPath('userData')), secondReaderStatus(w)])
-  return { ok: a.binary !== null || b.ok, detail: `${a.detail}; ${b.detail}` }
-})
 handle('dialog:pickImage', async () => {
   const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] })
   if (r.canceled || r.filePaths.length === 0) return null
@@ -129,7 +121,7 @@ handle('output:save', async (o) => {
 // Deleting is the one irreversible thing this app does, so it is fenced three ways: the name must be
 // an ordinary result name, the resolved path must sit inside ComfyUI's own output folder, and the user
 // has to confirm in a modal dialog. Only then is the PNG unlinked — on this disk when ComfyUI is
-// local, over the same ssh route the second OCR reader uses when it runs on the Studio.
+// local, over ssh on the Studio when it runs there.
 function sshRun(cmd: string): Promise<{ ok: boolean; out: string }> {
   const s = settings.get(); const host = new URL(s.comfyHost).hostname
   return new Promise((res) => {
@@ -163,7 +155,6 @@ handle('output:delete', async (o) => {
     const res = await sshRun(`rm -f -- '${file}'`)
     if (!res.ok) return { deleted: false, detail: `Could not delete it on ${where}: ${res.out.slice(0, 160) || 'ssh failed'}` }
   }
-  try { rmSync(join(app.getPath('userData'), 'results', resultCacheName(o)), { force: true }) } catch { /* the cache copy is disposable */ }
   jobs.forgetOutput(o)
   console.log(`[lite] deleted ${o.subfolder}/${o.filename} on ${where}`)
   return { deleted: true, detail: `Deleted ${o.filename}` }
@@ -204,16 +195,13 @@ void app.whenReady().then(async () => {
     const s = settings.get()
     // Local fast path, only when ComfyUI is this Mac's own: this Mac has an input and an output
     // folder at the same paths as the Studio's, so when ComfyUI is remote a file named
-    // image_00069_.png here is a different picture from the one asked for. Remote falls through to
-    // the fetched-for-OCR cache and then to ComfyUI itself over the tailnet.
+    // image_00069_.png here is a different picture from the one asked for, so that case goes to
+    // ComfyUI itself over the tailnet instead.
     if (isLoopback(s.comfyHost)) {
       const root = resolve(o.type === 'input' ? s.comfyInputDir : s.comfyOutputDir)
       const file = resolve(root, o.subfolder, o.filename)
       if (file.startsWith(root + sep) && existsSync(file)) return net.fetch(pathToFileURL(file).toString())
     }
-    // A copy fetched for OCR serves the same bytes without a second trip over the tailnet.
-    const cached = join(app.getPath('userData'), 'results', resultCacheName(o))
-    if (o.type === 'output' && existsSync(cached)) return net.fetch(pathToFileURL(cached).toString())
     // Remote path: pull it from ComfyUI over the tailnet. Node's fetch sends no Sec-Fetch-Site
     // header, so ComfyUI's cross-site 403 does not apply here the way it does to the renderer.
     try {
@@ -245,26 +233,7 @@ void app.whenReady().then(async () => {
   // Headless test hook: CAPTAINCOMFY_TEST_EDIT=/path/to.png submits one edit job at startup.
   const testEdit = process.env['CAPTAINCOMFY_TEST_EDIT']
   if (testEdit) setTimeout(() => { jobs.submit('edit', { imagePath: testEdit, imageName: testEdit.split('/').pop() ?? testEdit, instruction: process.env['CAPTAINCOMFY_TEST_INSTRUCTION'] ?? 'make it a rainy evening', enrich: true, megapixels: 1, steps: 4, seed: 7 }) }, 3000)
-  // Headless card test: CAPTAINCOMFY_TEST_CARD=/path/draft.json (a CardDraft; an empty scene is drafted by Gemma
-  // first) runs the whole pipeline, writes the finished jobs of the series to CAPTAINCOMFY_TEST_OUT and quits.
-  const testCard = process.env['CAPTAINCOMFY_TEST_CARD']
-  if (testCard) setTimeout(() => { void (async () => {
-    const { cardPrompt, draftToParams, sceneRequest } = await import('@shared/card')
-    const draft = JSON.parse(readFileSync(testCard, 'utf8')) as import('@shared/card').CardDraft
-    const s = settings.get()
-    if (!draft.scene.trim()) { await jobs.loadGemma(s.omlxHost, s.omlxModel); const r = await enrich(s.omlxHost, s.omlxModel, 'card_scene', sceneRequest(draft)); console.log(`[test-card] scene: ${r.detail}\n${r.text}`); if (!r.used) { console.log('[test-card] no scene draft; aborting'); app.quit(); return } draft.scene = r.text }
-    const params = draftToParams(draft, `test-${Date.now().toString(36)}`)
-    console.log(`[test-card] prompt (${cardPrompt(draft).split(/\s+/).length} words):\n${params.prompt}`)
-    jobs.submit('card', params)
-    const live = (): boolean => jobs.list().some((j) => j.kind === 'card' && (j.params as import('@shared/card').CardParams).series === params.series && (j.status === 'queued' || j.status === 'enriching' || j.status === 'running'))
-    await new Promise((r) => setTimeout(r, 3000))
-    while (live()) await new Promise((r) => setTimeout(r, 2000))
-    const done = jobs.list().filter((j) => j.kind === 'card' && (j.params as import('@shared/card').CardParams).series === params.series)
-    const out = process.env['CAPTAINCOMFY_TEST_OUT']; if (out) writeFileSync(out, JSON.stringify(done, null, 2))
-    console.log(`[test-card] finished: ${done.map((j) => `${j.status} ${j.progressLabel} ${j.outputs.map((o) => o.filename).join(',')}`).join(' | ')}`)
-    app.quit()
-  })() }, 2000)
-  // Headless UI check: CAPTAINCOMFY_SHOT=/path.png [CAPTAINCOMFY_TAB=card] captures the window after 4 s and quits.
+  // Headless UI check: CAPTAINCOMFY_SHOT=/path.png [CAPTAINCOMFY_TAB=image] captures the window after 4 s and quits.
   const shot = process.env['CAPTAINCOMFY_SHOT']
   if (shot) setTimeout(() => { void (async () => { try { const tab = process.env['CAPTAINCOMFY_TAB']; if (tab) { await win?.webContents.executeJavaScript(`document.querySelector('.tab[data-tab="${tab}"]')?.click()`) }; const click = process.env['CAPTAINCOMFY_CLICK']; if (click) { await new Promise((r) => setTimeout(r, 600)); await win?.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(click)})?.click()`) } await new Promise((r) => setTimeout(r, Number(process.env['CAPTAINCOMFY_SHOT_DELAY'] ?? 800))); const img = await win?.webContents.capturePage(); if (img) writeFileSync(shot, img.toPNG()); console.log(`[shot] wrote ${shot}`) } catch (e) { console.log('[shot] failed ' + String(e)) } app.quit() })() }, 3500)
   if (process.env['LITE_PROBE']) setTimeout(() => { void win?.webContents.executeJavaScript("(() => { const imgs=[...document.querySelectorAll('.grid img')]; return JSON.stringify({ cards: document.querySelectorAll('.card').length, grids: document.querySelectorAll('.grid').length, imgs: imgs.map(i => ({ src: i.src.slice(0, 80), complete: i.complete, w: i.naturalWidth, h: i.naturalHeight, box: i.getBoundingClientRect().width + 'x' + i.getBoundingClientRect().height })) }) })()").then((r) => console.log('[probe] ' + String(r))).catch((e) => console.log('[probe] failed ' + String(e))) }, 6000)

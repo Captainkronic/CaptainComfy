@@ -1,7 +1,6 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import type { EditParams, ImageParams, Job, Kind, MusicParams, Output } from '@shared/types'
-import { CARD_QUALITY, CARD_SHAPES, cardQualityKey, cardSize, type CardParams, type LetteringReport } from '@shared/card'
 import { EDIT_QUALITY, editQualityOf, sizeFor } from '@shared/sizing'
 import { IMAGE_MODELS, imageModel, imageQualityOf } from '@shared/models'
 import { useStore } from '../state/store'
@@ -19,13 +18,6 @@ function settingsOf(job: Job): { preset: string; items: string[] } {
     if (p.count > 1) items.push(`${p.count} candidates`)
     items.push(p.enrich ? 'Gemma rewrote the prompt' : 'prompt as written')
     return { preset, items }
-  }
-  if (job.kind === 'card') {
-    const p = job.params as CardParams; const qk = cardQualityKey(p.quality); const q = CARD_QUALITY[qk]; const size = cardSize(p.shape, qk)
-    items.push(`${CARD_SHAPES[p.shape].label} ${size.width}x${size.height}${q.upscale > 1 ? ` → ${size.width * q.upscale}x${size.height * q.upscale}` : ''}`, `${q.steps} steps`)
-    if (p.count > 1) items.push(`${p.count} candidates`)
-    items.push(`attempt ${p.attempt} of ${p.attempts}`, p.verify ? 'lettering read by OCR' : 'no OCR')
-    return { preset: q.label, items }
   }
   if (job.kind === 'edit') {
     const p = job.params as EditParams; const q = editQualityOf(p); const up = p.upscale ?? 1
@@ -52,31 +44,6 @@ function elapsed(j: Job): string {
   if (!j.startedAt) return ''
   const s = Math.round(((j.finishedAt ?? Date.now()) - j.startedAt) / 1000)
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`
-}
-
-/** One candidate's OCR verdict, in the words of the card guide: pass, check (look at these letters), fail. */
-function Verdict({ r }: { r: LetteringReport | undefined }): JSX.Element {
-  if (!r) return <div className="verdict pending">Reading the lettering…</div>
-  const mark = r.verdict === 'pass' ? '✓' : r.verdict === 'check' ? '⚠' : r.verdict === 'fail' ? '✗' : '·'
-  return (
-    <div className={`verdict ${r.verdict}`} title={r.literal.length ? `OCR read (literal pass):\n${r.literal.map((l) => `${l.text}  [${l.where}, ${Math.round(l.confidence * 100)}%]`).join('\n')}` : r.detail}>
-      <b>{mark} {r.verdict === 'pass' ? 'lettering verified' : r.verdict === 'check' ? 'look at the lettering' : r.verdict === 'fail' ? 'lettering wrong' : 'not checked'}</b> {r.detail}
-      {r.checks.filter((c) => c.notes?.length).map((c) => <div key={c.expected} className="notes">{c.notes!.join('; ')}</div>)}
-    </div>
-  )
-}
-
-function CardActions({ job }: { job: Job }): JSX.Element {
-  const p = job.params as CardParams
-  const setDraft = useStore((s) => s.setCardDraft)
-  const reroll = (): void => { void call('jobs:submitCard', { ...p, seed: null, attempt: 1, series: Date.now().toString(36) }) }
-  const edit = (): void => { setDraft({ promptOverride: p.prompt, seed: job.seed ?? null }); document.querySelector('.form')?.scrollTo({ top: 0, behavior: 'smooth' }) }
-  return (
-    <span>
-      <button className="btn ghost" title="Same prompt, new seed" onClick={reroll}>↻ Re-roll</button>
-      <button className="btn ghost" title="Put this prompt and seed in the form to edit: the layout stays, the edit applies" onClick={edit}>✎ Edit this prompt</button>
-    </span>
-  )
 }
 
 /** Delete a result for good. Main puts a modal confirmation in front of it and only unlinks the PNG
@@ -107,8 +74,7 @@ function EditButton({ o }: { o: Output }): JSX.Element {
 function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; local: boolean }): JSX.Element {
   const live = job.status === 'queued' || job.status === 'enriching' || job.status === 'running'
   const params = job.params
-  const card = job.kind === 'card' ? (params as CardParams) : null
-  const summary = card ? `${card.title}: ${card.expect.map((e) => `"${e}"`).join(' · ')}` : job.kind === 'image' ? (params as ImageParams).prompt : job.kind === 'edit' ? `${(params as EditParams).imageName}: ${(params as EditParams).instruction}` : `${(params as MusicParams).style}\n${(params as MusicParams).lyrics}`
+  const summary = job.kind === 'image' ? (params as ImageParams).prompt : job.kind === 'edit' ? `${(params as EditParams).imageName}: ${(params as EditParams).instruction}` : `${(params as MusicParams).style}\n${(params as MusicParams).lyrics}`
   return (
     <div className="card">
       <div className="head">
@@ -118,7 +84,6 @@ function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; l
         {live && <button className="btn ghost" onClick={() => { void call('jobs:cancel', job.id) }}>Cancel</button>}
       </div>
       <Settings job={job} />
-      {card && <details className="prompt-preview"><summary>Prompt as sent</summary><div className="enriched">{card.prompt}</div></details>}
       {job.kind === 'image' && <details className="prompt-preview"><summary>Prompt as typed</summary><div className="enriched">{(params as ImageParams).prompt}</div></details>}
       {live && (
         <>
@@ -139,18 +104,7 @@ function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; l
             : <figure><div className="pending">{live ? 'Editing…' : 'No result'}</div><figcaption>After</figcaption></figure>}
         </div>
       )}
-      {job.outputs.length > 0 && job.kind === 'card' && (
-        <div className="grid">
-          {job.outputs.map((o, i) => (
-            <figure key={o.url}>
-              <img src={o.url} alt="" onClick={() => onZoom(o)} />
-              {card!.verify && card!.expect.length > 0 && <Verdict r={job.lettering?.[i]} />}
-              <figcaption>{job.outputs.length > 1 ? `candidate ${i + 1}` : ''}</figcaption>
-            </figure>
-          ))}
-        </div>
-      )}
-      {job.outputs.length > 0 && job.kind !== 'edit' && job.kind !== 'card' && (
+      {job.outputs.length > 0 && job.kind !== 'edit' && (
         job.kind !== 'music'
           ? <div className="grid">{job.outputs.map((o) => <img key={o.url} src={o.url} alt="" onClick={() => onZoom(o)} />)}</div>
           : job.outputs.map((o) => <audio key={o.url} controls preload="metadata" src={o.url} />)
@@ -167,7 +121,6 @@ function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; l
           ))}
         </div>
       )}
-      {card && !live && <div className="meta"><CardActions job={job} /></div>}
     </div>
   )
 }

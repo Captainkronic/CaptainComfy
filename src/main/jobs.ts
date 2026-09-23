@@ -6,15 +6,13 @@
 import { powerSaveBlocker } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { annotatedSource, cardGraph, editGraph, imageGraph, modelFamily, musicGraph, NODE_LABELS, warmupGraph, type ApiGraph } from '@shared/graphs'
+import { annotatedSource, editGraph, imageGraph, modelFamily, musicGraph, NODE_LABELS, type ApiGraph } from '@shared/graphs'
 import { randomSeed } from '@shared/sizing'
 import { IMAGE_MODELS, imageModel } from '@shared/models'
 import type { EditParams, ImageParams, Job, JobStatus, Kind, MusicParams, Output } from '@shared/types'
-import { checkLettering, type CardParams, type LetteringReport } from '@shared/card'
 import type { ComfyClient, ComfyEvent } from './comfy'
-import { isLoopback, liteOutUrl, resultCacheName } from '@shared/net'
+import { liteOutUrl } from '@shared/net'
 import { enrich, gemmaLoaded, gemmaResident, loadModel, unloadModel } from './enrich'
-import { readLettering, readSecond } from './ocr'
 import { musicStyleBrief, normalizeStyleTags } from '@shared/enrich'
 
 export interface JobDeps {
@@ -22,12 +20,6 @@ export interface JobDeps {
   omlx: () => { host: string; model: string; release: boolean }
   emit: (job: Job) => void
   file: string
-  /** ComfyUI's output folder as seen from this machine (exists only when ComfyUI is local). */
-  outputDir: () => string
-  /** Where ComfyUI runs, for the second OCR reader: its host and, when remote, the ssh route to it. */
-  comfyWhere: () => { host: string; ssh: { user: string; key: string; host: string } }
-  /** The app's data folder: results are copied under results/ for OCR when ComfyUI is remote; the Vision helper is built under bin/. */
-  dataDir: string
   /** Start ComfyUI where it should run (the same path as the Start button), and whether a waiting job may do so by itself. */
   startComfy: () => Promise<{ ok: boolean; detail: string }>
   autoRestart: () => boolean
@@ -60,7 +52,9 @@ export class JobManager {
   }
   constructor(private readonly d: JobDeps) {
     try {
-      if (existsSync(d.file)) this.jobs = (JSON.parse(readFileSync(d.file, 'utf8')) as Job[]).map((j) => ({ ...j, outputs: (j.outputs ?? []).map((o) => ({ ...o, viewUrl: o.viewUrl ?? o.url, url: liteOutUrl(o.subfolder, o.filename, o.type) })) })).map((j) => {
+      // A kind this build no longer has (the retired Card tab) is dropped on load: the tabs would never
+      // show it, and a stale queued one would otherwise be built as the kind the job pump falls through to.
+      if (existsSync(d.file)) this.jobs = (JSON.parse(readFileSync(d.file, 'utf8')) as Job[]).filter((j) => j.kind === 'image' || j.kind === 'edit' || j.kind === 'music').map((j) => ({ ...j, outputs: (j.outputs ?? []).map((o) => ({ ...o, viewUrl: o.viewUrl ?? o.url, url: liteOutUrl(o.subfolder, o.filename, o.type) })) })).map((j) => {
         // Across a relaunch: finished jobs stay as they are; a job ComfyUI has (running with a prompt id) is
         // reconciled by resume(); anything still waiting or only enriching simply runs again from the start.
         if (j.status === 'done' || j.status === 'cancelled' || j.status === 'queued' || (j.status === 'running' && j.promptId)) return j
@@ -86,7 +80,7 @@ export class JobManager {
             if ((job.status as JobStatus) === 'cancelled') { /* left as the user set it */ }
             else if (r.error) this.patch(job, { status: r.error === LOST && (job.retries ?? 0) < MAX_RETRIES ? 'queued' : 'failed', retries: r.error === LOST ? (job.retries ?? 0) + 1 : job.retries, promptId: undefined, error: r.error === LOST ? undefined : r.error, progressLabel: r.error === LOST ? 'ComfyUI was restarted; retrying' : 'Failed', finishedAt: r.error === LOST ? undefined : Date.now() })
             else if (outputs.length < count) this.patch(job, { status: 'queued', promptId: undefined, outputs, progressLabel: `Queued again for candidate ${outputs.length + 1} of ${count}` })
-            else { this.patch(job, { status: 'done', progress: 1, progressLabel: 'Done', finishedAt: Date.now(), outputs }); if (job.kind === 'card') await this.verifyCard(job) }
+            else this.patch(job, { status: 'done', progress: 1, progressLabel: 'Done', finishedAt: Date.now(), outputs })
           } finally { this.running = false; this.current = null }
           continue
         }
@@ -94,7 +88,6 @@ export class JobManager {
         if (r?.status === 'success' && r.outputs.length) {
           console.log(`[lite] recovered ${job.kind} job ${job.id} from ComfyUI history (${r.outputs.map((o) => o.filename).join(', ')})`)
           this.patch(job, { status: 'done', progress: 1, progressLabel: 'Done (recovered after a restart)', finishedAt: Date.now(), outputs: r.outputs })
-          if (job.kind === 'card') await this.verifyCard(job)
         } else if ((r === null || !r.status) && (job.retries ?? 0) < MAX_RETRIES) {
           // ComfyUI is down or has forgotten the prompt (killed under it): run it again once it is back.
           console.warn(`[lite] ${job.kind} job ${job.id} lost (ComfyUI ${r === null ? 'unreachable' : 'has no record of it'}); retry ${(job.retries ?? 0) + 1} of ${MAX_RETRIES}`)
@@ -105,7 +98,7 @@ export class JobManager {
     })()
   }
 
-  submit(kind: Kind, params: ImageParams | EditParams | MusicParams | CardParams): Job {
+  submit(kind: Kind, params: ImageParams | EditParams | MusicParams): Job {
     const job: Job = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, kind, createdAt: Date.now(), status: 'queued', params, progress: null, progressLabel: 'Queued', outputs: [] }
     this.jobs.unshift(job); this.save(); this.d.emit(job); void this.pump(); return job
   }
@@ -117,15 +110,12 @@ export class JobManager {
   }
   clearFinished(): void { this.jobs = this.jobs.filter((j) => j.status === 'queued' || j.status === 'enriching' || j.status === 'running'); this.save() }
 
-  /** Drop a deleted result from whichever job produced it, taking its lettering report with it so a
-   *  card's verdicts keep lining up with the candidates that are still there. */
+  /** Drop a deleted result from whichever job produced it. */
   forgetOutput(o: { subfolder: string; filename: string }): void {
     for (const job of this.jobs) {
       const i = job.outputs.findIndex((x) => x.filename === o.filename && x.subfolder === o.subfolder)
       if (i < 0) continue
-      const outputs = job.outputs.filter((_, n) => n !== i)
-      const lettering = job.lettering?.filter((_, n) => n !== i)
-      this.patch(job, lettering ? { outputs, lettering } : { outputs })
+      this.patch(job, { outputs: job.outputs.filter((_, n) => n !== i) })
     }
   }
 
@@ -138,25 +128,6 @@ export class JobManager {
     if (gemmaResident()) { await loadModel(host, model); return }   // pre-loaded by this instance: ComfyUI was freed then
     await this.d.comfy.free(); this.lastFamily = null
     await loadModel(host, model)
-  }
-
-  private lastWarm = { at: 0, prompt: '' }
-  /** Load the Z-Image weights now, ahead of a card the user is still writing. Idle only: a queued job
-   *  warms the model itself. Cheap when already warm (ComfyUI answers the identical prompt from cache). */
-  async warm(what: 'zimage' | 'gemma', prompt = ''): Promise<{ ok: boolean; detail: string }> {
-    if (this.running) return { ok: false, detail: 'a job is running' }
-    const { host, model, release } = this.d.omlx()
-    if (what === 'gemma') {
-      // A card with no scene yet will most likely be drafted: have Gemma ready (frees ComfyUI first).
-      if (await gemmaLoaded(host, model)) return { ok: true, detail: 'Gemma is loaded' }
-      await this.loadGemma(host, model); console.log('[lite] Gemma pre-loaded for a draft'); return { ok: true, detail: 'Gemma loaded' }
-    }
-    if (Date.now() - this.lastWarm.at < 60_000 && this.lastWarm.prompt === prompt) return { ok: true, detail: 'warmed recently' }
-    this.lastWarm = { at: Date.now(), prompt }
-    if (release && await gemmaLoaded(host, model)) await unloadModel(host, model)   // never beside a 21 GB Gemma
-    if (this.lastFamily && this.lastFamily !== 'zimage') await this.d.comfy.free()
-    this.lastFamily = 'zimage'
-    try { await this.d.comfy.submit(warmupGraph(prompt || undefined)); console.log(`[lite] warm-up submitted${prompt ? ' with the card prompt' : ''}`); return { ok: true, detail: 'warming Z-Image' } } catch (err) { return { ok: false, detail: err instanceof Error ? err.message : String(err) } }
   }
 
   private async pump(): Promise<void> {
@@ -185,11 +156,7 @@ export class JobManager {
     let count = 1
     let build: (i: number) => ApiGraph
     try {
-      if (job.kind === 'card') {
-        // The prompt was assembled in the form and any Gemma work happened there: nothing to do but render.
-        const p = job.params as CardParams; count = Math.max(1, p.count)
-        build = (i) => cardGraph({ ...p, count: 1 }, seed + i)
-      } else if (job.kind === 'image') {
+      if (job.kind === 'image') {
         let p = job.params as ImageParams; count = Math.max(1, p.count)
         // Every model has its own ceiling, and the heavy ones sit below the global one: Juggernaut Z
         // took the Studio to critical pressure at 1.5 MP and the guard killed ComfyUI mid-render.
@@ -248,7 +215,7 @@ export class JobManager {
         const g = musicGraph(p, style, lyrics, seed)
         build = () => g
       }
-      // A scene drafted in the Card form, or another instance, may have left Gemma resident: ask oMLX.
+      // Another instance may have left Gemma resident: ask oMLX.
       if (release && (gemmaUsed || await gemmaLoaded(host, model))) {
         this.patch(job, { progressLabel: 'Releasing Gemma so ComfyUI has the memory' })
         const u = await unloadModel(host, model)
@@ -288,7 +255,6 @@ export class JobManager {
         this.patch(job, { outputs })
       }
       this.patch(job, { status: 'done', progress: 1, progressLabel: 'Done', finishedAt: Date.now(), outputs })
-      if (job.kind === 'card') await this.verifyCard(job)
     } catch (err) {
       this.patch(job, { status: 'failed', error: err instanceof Error ? err.message : String(err), progressLabel: 'Failed', finishedAt: Date.now() })
     }
@@ -318,49 +284,6 @@ export class JobManager {
     return true
   }
 
-  /** A result file on this disk: ComfyUI's own output when local, otherwise a copy fetched over the tailnet. */
-  private async localFile(o: Output): Promise<string> {
-    // Read from this disk only when ComfyUI is this Mac's own. This Mac has an output folder at the
-    // same path as the Studio's, so when ComfyUI is remote a result named image_00069_.png here is a
-    // different picture from the one just rendered, and the lettering gate would judge the wrong image.
-    if (isLoopback(this.d.comfyWhere().host)) {
-      const direct = join(this.d.outputDir(), o.subfolder, o.filename)
-      if (existsSync(direct)) return direct
-    }
-    const dir = join(this.d.dataDir, 'results'); mkdirSync(dir, { recursive: true })
-    const file = join(dir, resultCacheName(o))
-    if (!existsSync(file)) writeFileSync(file, await this.d.comfy.fetchOutput(o))
-    return file
-  }
-
-  /** The lettering gate of the card guide, run by OCR: every candidate is read twice (literal and
-   *  language-corrected) and compared with the strings the card must carry. When no candidate is at
-   *  least a 'check', and the budget allows, the same prompt goes again on a new seed. */
-  private async verifyCard(job: Job): Promise<void> {
-    const p = job.params as CardParams
-    if (!p.verify || p.expect.length === 0 || job.outputs.length === 0) return
-    this.patch(job, { status: 'running', progress: null, progressLabel: 'Reading the lettering' })
-    const reports: LetteringReport[] = []
-    for (const o of job.outputs) {
-      try {
-        // Two independent literal readers, in parallel: Vision here, RapidOCR where ComfyUI runs.
-        const where = this.d.comfyWhere(); const local = isLoopback(where.host)
-        const file = await this.localFile(o)
-        const [r, second] = await Promise.all([readLettering(this.d.dataDir, file), readSecond({ local, viewUrl: o.viewUrl, localPath: file, ssh: where.ssh })])
-        reports.push('error' in r ? (second ? checkLettering(p.expect, [], [], second) : { verdict: 'unavailable', detail: r.error, literal: [], corrected: [], checks: [], unexpected: [] }) : checkLettering(p.expect, r.literal, r.corrected, second))
-      } catch (err) { reports.push({ verdict: 'unavailable', detail: err instanceof Error ? err.message : String(err), literal: [], corrected: [], checks: [], unexpected: [] }) }
-      this.patch(job, { lettering: [...reports] })
-    }
-    if ((job.status as JobStatus) === 'cancelled') return
-    const passed = reports.filter((r) => r.verdict === 'pass').length, checks = reports.filter((r) => r.verdict === 'check').length
-    const readable = reports.some((r) => r.verdict !== 'unavailable')
-    const label = !readable ? `Done; ${reports[0]?.detail ?? 'OCR unavailable'}` : passed ? `Lettering verified on ${passed} of ${reports.length}` : checks ? `Lettering needs a look on ${checks} of ${reports.length}` : 'Lettering wrong on every candidate'
-    this.patch(job, { status: 'done', progressLabel: label, finishedAt: Date.now() })
-    if (readable && passed === 0 && checks === 0 && p.attempt < p.attempts) {
-      console.log(`[card] ${p.series}: attempt ${p.attempt} of ${p.attempts} failed the lettering gate; re-rolling`)
-      this.submit('card', { ...p, seed: null, attempt: p.attempt + 1 })
-    }
-  }
 
   /** Follow one prompt to its end. Resolves with its outputs, or an error (LOST when ComfyUI no longer
    *  has it); the caller decides what that means for the job. */

@@ -1,5 +1,4 @@
 import type { EditParams, Health, ImageParams, Job, MusicParams, Output } from './types'
-import type { CardParams } from './card'
 import type { EnrichMode } from './enrich'
 
 export interface Settings {
@@ -27,20 +26,15 @@ export interface IpcApi {
   'health:get': () => Promise<Health>
   'settings:presets': () => Promise<{ local: { comfyHost: string; omlxHost: string }; studio: { comfyHost: string; omlxHost: string } }>
   'comfy:start': () => Promise<{ ok: boolean; detail: string }>
-  /** Pre-load the Z-Image weights while the user is still filling in a card (idle only, debounced). */
-  'comfy:warm': (what: 'zimage' | 'gemma', prompt?: string) => Promise<{ ok: boolean; detail: string }>
   'jobs:list': () => Promise<Job[]>
   'jobs:submitImage': (p: ImageParams) => Promise<Job>
   'jobs:submitMusic': (p: MusicParams) => Promise<Job>
   'jobs:submitEdit': (p: EditParams) => Promise<Job>
-  'jobs:submitCard': (p: CardParams) => Promise<Job>
   /** Native open dialog; returns the path plus a small data: URL preview the renderer may show. */
   'dialog:pickImage': () => Promise<{ path: string; name: string; preview: string } | null>
   'jobs:cancel': (id: string) => Promise<void>
   'jobs:clearFinished': () => Promise<void>
   'enrich:preview': (mode: EnrichMode, text: string) => Promise<{ text: string; used: boolean; detail: string }>
-  /** Whether lettering can be read on this Mac (the Vision helper compiles on first use; needs the Xcode command line tools). */
-  'ocr:status': () => Promise<{ ok: boolean; detail: string }>
   'shell:reveal': (output: Output) => Promise<void>
   /** Save a result to a location the user picks (defaults to ~/Downloads). Works locally and over the tailnet. */
   'output:save': (output: Output) => Promise<{ path: string } | null>

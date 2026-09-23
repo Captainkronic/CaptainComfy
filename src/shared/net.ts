@@ -29,11 +29,6 @@ export function comfyViewUrl(comfyHost: string, subfolder: string, filename: str
   return `${comfyHost.replace(/\/+$/, '')}/view?${q.toString()}`
 }
 
-/** The name a result is cached under locally (results/ in the app's data folder) for OCR and display. */
-export function resultCacheName(o: { subfolder: string; filename: string }): string {
-  return [o.subfolder, o.filename].filter(Boolean).join('_').replace(/[^A-Za-z0-9._-]+/g, '_')
-}
-
 /** `subfolder/filename` when it is an ordinary ComfyUI result name, else null. Every segment must be
  *  plain (letters, digits, dot, dash, underscore, space), so the joined name cannot climb out of the
  *  output folder, name a hidden file or carry anything a remote shell would read as syntax. Delete
