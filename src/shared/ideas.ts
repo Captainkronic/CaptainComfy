@@ -230,14 +230,56 @@ const GENRES: Genre[] = [
   { name: 'french chanson', bpm: [70, 120], instruments: ['accordion', 'nylon guitar', 'upright bass', 'brushed drums'], moods: ['wistful', 'romantic', 'wry'], vocals: ['expressive female vocal', 'spoken-sung male vocal'] },
   { name: 'vaporwave', bpm: [60, 90], instruments: ['pitched-down samples', 'lush 80s pads', 'gated snare', 'chorused bass'], moods: ['hazy', 'uncanny', 'nostalgic'], vocals: ['slowed vocal samples', 'instrumental'] }
 ]
-const USE_CASES = ['a title sequence', 'a rainy commute', 'a cooking video', 'a late-night study session', 'a travel montage', 'a boss fight', 'a wedding first dance', 'a meditation app', 'a podcast intro', 'closing credits', 'a runway show', 'a road trip playlist', 'a training montage', 'a funeral scene', 'a product launch film', 'a village festival', 'a heist getaway', 'an ice rink at night']
-const PRODUCTION = ['recorded live in one room', 'heavily compressed and loud', 'lo-fi bedroom production', 'lush studio production with wide stereo', 'sparse and dry, close-miked', 'drenched in plate reverb', 'tape-saturated', 'crisp modern mix with deep low end']
+/** What a track is for, and the genres that actually suit it. Left to pick freely this shape
+ *  produced "music for a meditation app, 80s power ballad"; the fit is a curatorial judgement, not
+ *  something two numbers derive, so each use carries its own shortlist. A test checks every name
+ *  here still exists in GENRES, so renaming a genre cannot quietly break the pairing. */
+export const USE_CASES: readonly (readonly [string, readonly string[]])[] = [
+  ['a title sequence', ['cinematic orchestral', 'synthwave', 'trip-hop', 'post-rock', 'jazz trio', 'city pop', 'baroque chamber']],
+  ['a rainy commute', ['lo-fi hip hop', 'trip-hop', 'ambient', 'shoegaze', 'minimal piano', 'jazz trio', 'vaporwave', 'post-rock']],
+  ['a cooking video', ['bossa nova', 'highlife', 'soul', 'city pop', 'afrobeats', 'cumbia', 'reggae', 'french chanson']],
+  ['a late-night study session', ['lo-fi hip hop', 'ambient', 'minimal piano', 'new age', 'vaporwave', 'jazz trio', 'post-rock']],
+  ['a travel montage', ['indie rock', 'afrobeats', 'highlife', 'synth-pop', 'disco', 'city pop', 'bluegrass', 'cumbia']],
+  ['a boss fight', ['metal', 'doom metal', 'techno', 'drum and bass', 'trap', 'chiptune', 'cinematic orchestral', 'math rock']],
+  ['a wedding first dance', ['soul', 'country ballad', 'acoustic folk-pop', '80s power ballad', 'bossa nova', 'jazz trio', 'french chanson', 'gospel']],
+  ['a meditation app', ['ambient', 'new age', 'minimal piano', 'baroque chamber']],
+  ['a podcast intro', ['lo-fi hip hop', 'deep house', 'synth-pop', 'indie rock', 'disco', 'city pop', 'UK garage', 'chiptune']],
+  ['closing credits', ['post-rock', 'cinematic orchestral', 'minimal piano', 'soul', 'acoustic folk-pop', 'ambient', 'french chanson']],
+  ['a runway show', ['techno', 'deep house', 'UK garage', 'trap', 'synthwave', 'disco', 'city pop']],
+  ['a road trip playlist', ['indie rock', 'country ballad', 'bluegrass', 'garage rock', 'soul', 'synth-pop', 'ska', 'highlife']],
+  ['a training montage', ['pop-punk', 'metal', 'trap', 'techno', 'disco', 'drum and bass', 'chiptune', 'garage rock']],
+  ['a funeral scene', ['minimal piano', 'cinematic orchestral', 'gospel', 'ambient', 'baroque chamber', 'post-rock']],
+  ['a product launch film', ['synth-pop', 'deep house', 'cinematic orchestral', 'ambient', 'post-rock', 'city pop', 'UK garage']],
+  ['a village festival', ['klezmer', 'highlife', 'cumbia', 'salsa', 'bluegrass', 'ska', 'flamenco', 'qawwali', 'gospel']],
+  ['a heist getaway', ['techno', 'drum and bass', 'trip-hop', 'disco', 'city pop', 'garage rock', 'UK garage', 'synthwave']],
+  ['an ice rink at night', ['synthwave', 'ambient', 'minimal piano', 'city pop', 'vaporwave', 'shoegaze', 'baroque chamber']],
+  ['a nature documentary', ['cinematic orchestral', 'ambient', 'minimal piano', 'new age', 'post-rock', 'baroque chamber']],
+  ['a dive bar at closing time', ['garage rock', 'country ballad', 'soul', 'jazz trio', 'ska', 'french chanson', 'trip-hop']]
+]
+export const GENRE_BY_NAME = new Map(GENRES.map((g) => [g.name, g]))
+const PRODUCTION = ['heavily compressed and loud', 'lo-fi bedroom production', 'lush studio production with wide stereo', 'drenched in plate reverb', 'tape-saturated', 'crisp modern mix with deep low end']
+/** Only for music people actually play in a room: a sample-built genre is not close-miked. */
+const LIVE_PRODUCTION = ['recorded live in one room', 'sparse and dry, close-miked', 'one take, room mics up']
+const ELECTRONIC = new Set(['deep house', 'techno', 'trap', 'drum and bass', 'UK garage', 'synthwave', 'vaporwave', 'chiptune', 'lo-fi hip hop', 'ambient'])
+const productionFor = (g: Genre): string => r(ELECTRONIC.has(g.name) ? PRODUCTION : [...PRODUCTION, ...LIVE_PRODUCTION])
 
 function bpmIn(g: Genre): number { return g.bpm[0] + Math.floor(Math.random() * (g.bpm[1] - g.bpm[0] + 1)) }
-/** Two genres only fuse when their tempo ranges overlap, so the bpm is honest for both names. */
+/** Genres that work as a bed rather than as a song. They only cross with music that leaves room for
+ *  a bed: "ambient crossed with 80s power ballad" is two records playing at once. */
+export const ATMOSPHERIC = new Set(['ambient', 'new age', 'minimal piano', 'baroque chamber', 'vaporwave'])
+export const BED_FRIENDLY = new Set([...ATMOSPHERIC, 'post-rock', 'shoegaze', 'trip-hop', 'lo-fi hip hop', 'doom metal', 'techno', 'dub', 'cinematic orchestral', 'synthwave', 'deep house'])
+/** Two genres fuse only when the tempo ranges overlap — so the bpm is honest for both names — and
+ *  when neither is a bed genre paired with something that has no room for one. */
+function fuses(a: Genre, b: Genre): boolean {
+  if (a.name === b.name) return false
+  if (a.bpm[0] > b.bpm[1] || a.bpm[1] < b.bpm[0]) return false
+  if (ATMOSPHERIC.has(a.name) && !BED_FRIENDLY.has(b.name)) return false
+  if (ATMOSPHERIC.has(b.name) && !BED_FRIENDLY.has(a.name)) return false
+  return true
+}
 function fusionPair(): { a: Genre; b: Genre; bpm: number } | null {
   const a = r(GENRES)
-  const options = GENRES.filter((g) => g.name !== a.name && g.bpm[0] <= a.bpm[1] && g.bpm[1] >= a.bpm[0])
+  const options = GENRES.filter((g) => fuses(a, g))
   if (!options.length) return null
   const b = r(options)
   const lo = Math.max(a.bpm[0], b.bpm[0]), hi = Math.min(a.bpm[1], b.bpm[1])
@@ -249,18 +291,22 @@ const MUSIC_SHAPES: readonly (readonly [number, () => { text: string; bpm: numbe
   [40, () => { const g = r(GENRES); const parts = [g.eras && maybe(0.6) ? `${r(g.eras)} ${g.name}` : g.name, ...some(g.instruments, 2 + Math.floor(Math.random() * 2)), r(g.moods), r(g.vocals)]
     return { text: parts.join(', '), bpm: bpmIn(g), key: g.name } }],
   // Written as a brief: what the track is for.
-  [18, () => { const g = r(GENRES); const parts = [`music for ${r(USE_CASES)}`, g.name, ...some(g.instruments, 2), r(g.moods), r(g.vocals)]
+  [18, () => { const [use, names] = r(USE_CASES)
+    const pool = names.map((n) => GENRE_BY_NAME.get(n)).filter((g): g is Genre => Boolean(g))
+    const g = r(pool.length ? pool : GENRES)
+    const parts = [`music for ${use}`, g.name, ...some(g.instruments, 2), r(g.moods), r(g.vocals)]
     return { text: parts.join(', '), bpm: bpmIn(g), key: g.name } }],
   // Two genres crossed, tempos permitting.
   [16, () => { const f = fusionPair(); if (!f) { const g = r(GENRES); return { text: [g.name, ...some(g.instruments, 2), r(g.moods), r(g.vocals)].join(', '), bpm: bpmIn(g), key: g.name } }
-    const parts = [`${f.a.name} crossed with ${f.b.name}`, r(f.a.instruments), r(f.b.instruments), r(f.a.moods), r(maybe(0.5) ? f.a.vocals : f.b.vocals)]
+    const lead = r(f.a.instruments); const second = r(f.b.instruments.filter((i) => i !== lead)) ?? r(f.b.instruments)
+    const parts = [`${f.a.name} crossed with ${f.b.name}`, lead, second, r(f.a.moods), r(maybe(0.5) ? f.a.vocals : f.b.vocals)]
     return { text: parts.join(', '), bpm: f.bpm, key: `${f.a.name}+${f.b.name}` } }],
   // Led by the instrument doing the work.
   [14, () => { const g = r(GENRES); const lead = r(g.instruments)
     const parts = [`${lead}-led ${g.name}`, ...some(g.instruments.filter((i) => i !== lead), 2), r(g.moods), r(g.vocals)]
     return { text: parts.join(', '), bpm: bpmIn(g), key: g.name } }],
   // The same genre, but described by how it was recorded.
-  [12, () => { const g = r(GENRES); const parts = [g.name, ...some(g.instruments, 2), r(PRODUCTION), r(g.moods), r(g.vocals)]
+  [12, () => { const g = r(GENRES); const parts = [g.name, ...some(g.instruments, 2), productionFor(g), r(g.moods), r(g.vocals)]
     return { text: parts.join(', '), bpm: bpmIn(g), key: g.name } }]
 ]
 export function musicIdea(): { text: string; bpm: number } {
@@ -296,6 +342,6 @@ export const IDEA_SPACE = {
     + (POSTER_BRIEFS.length * PALETTE.length * GRAPHIC_MEDIA.length),
   edit: EDIT_OPS.length * 14 * (EDIT_OPS.length * 14),
   music: GENRES.reduce((n, g) => n + (g.bpm[1] - g.bpm[0] + 1) * g.instruments.length * g.moods.length * g.vocals.length, 0)
-    * (1 + USE_CASES.length / 4 + PRODUCTION.length / 4),
+    * (1 + USE_CASES.length / 4 + (PRODUCTION.length + LIVE_PRODUCTION.length) / 4),
   lyrics: THEME_SUBJECTS.length * (THEME_ANGLES.length + 1) * (LYRIC_FORMS.length + 1) + 1
 }

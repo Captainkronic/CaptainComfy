@@ -98,8 +98,18 @@ subjects carry where they belong (a glassblower indoors, a shepherd outdoors, a 
 follows the room (no projector beam on a hilltop chapel), outdoor-only actions never land indoors (no
 sheltering under an awning inside a boxing gym), subjects that name their own setting do not get a
 second one (no busy kitchen inside an aircraft hangar), animals get actions and places that suit land,
-water or air (no cat caught mid-flight, no dolphin in tall grass), and two genres only fuse when
-their tempo ranges overlap, so the bpm stays honest for both names.
+water or air (no cat caught mid-flight, no dolphin in tall grass).
+
+Music is tightened the same way. Each **use** carries its own shortlist of genres, because the fit is
+a curatorial judgement rather than something two numbers derive — left to pick freely the shape
+produced "music for a meditation app, 80s power ballad"; a test checks every name on those lists
+still exists, so renaming a genre cannot quietly break the pairing. **Fusions** need the two tempo
+ranges to overlap, which keeps the bpm honest for both names and rules out most nonsense by itself
+(metal and new age never meet), and a small set of bed genres — ambient, new age, minimal piano,
+baroque chamber, vaporwave — only cross with music that leaves room for a bed, since "ambient crossed
+with 80s power ballad" is two records playing at once. The two genres never contribute the same
+instrument twice. **Production notes** respect how the music is made: a sample-built genre is never
+"recorded live in one room".
 
 **A short memory.** `fresh()` holds the last eight head-words per kind and re-rolls when one comes up
 again, so you do not get three lighthouses in a row just because the dice said so. Measured: 0.45

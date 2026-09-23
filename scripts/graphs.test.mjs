@@ -85,7 +85,7 @@ test('style tags always carry the configured bpm and nothing else', () => {
   assert.ok(musicStyleBrief(96).includes("exactly 96 bpm")); assert.ok(!musicStyleBrief(96).includes('NNN'))
 })
 
-const { imageIdea, editIdea, musicIdea, lyricIdea, IDEA_SPACE } = await fix('ideas')
+const { imageIdea, editIdea, musicIdea, lyricIdea, IDEA_SPACE, USE_CASES, GENRE_BY_NAME, ATMOSPHERIC, BED_FRIENDLY } = await fix('ideas')
 test('idea space is in the thousands and samples are distinct', () => {
   assert.ok(IDEA_SPACE.image > 100000, 'image ' + IDEA_SPACE.image); assert.ok(IDEA_SPACE.music > 5000, 'music ' + IDEA_SPACE.music); assert.ok(IDEA_SPACE.edit >= 800, 'edit ' + IDEA_SPACE.edit)
   const imgs = new Set(Array.from({ length: 500 }, imageIdea)); assert.ok(imgs.size > 490, `only ${imgs.size} distinct image ideas in 500`)
@@ -137,4 +137,34 @@ test('no preset asks a model for more pixels than it survived on the Studio', ()
   // Juggernaut Z is the heavy one: 1 MP only, and Print still reaches print size through the upscaler.
   assert.equal(IMAGE_MODELS['juggernaut-z'].memory.maxMegapixels, 1.0)
   assert.equal(IMAGE_MODELS['juggernaut-z'].presets.print.upscale, 2)
+})
+
+test('every use-case names genres that exist, and enough of them to stay varied', () => {
+  for (const [use, names] of USE_CASES) {
+    assert.ok(names.length >= 4, `${use} offers only ${names.length} genres`)
+    assert.equal(new Set(names).size, names.length, `${use} lists a genre twice`)
+    for (const n of names) assert.ok(GENRE_BY_NAME.has(n), `${use} names a genre that does not exist: ${n}`)
+  }
+  // The pairing has to actually bite: a meditation app must never be scored with a power ballad.
+  const calm = USE_CASES.find(([u]) => u === 'a meditation app')[1]
+  for (const bad of ['80s power ballad', 'metal', 'drum and bass', 'pop-punk']) assert.ok(!calm.includes(bad))
+})
+
+test('fused genres share a tempo range, and a bed genre only crosses with one that leaves room', () => {
+  let fusions = 0
+  for (let i = 0; i < 3000; i++) {
+    const m = musicIdea()
+    const hit = /^(.+?) crossed with ([^,]+),/.exec(m.text)
+    if (!hit) continue
+    fusions++
+    const [, a, b] = hit
+    const ga = GENRE_BY_NAME.get(a), gb = GENRE_BY_NAME.get(b)
+    assert.ok(ga && gb, `unknown genre in "${m.text}"`)
+    assert.ok(m.bpm >= Math.max(ga.bpm[0], gb.bpm[0]) && m.bpm <= Math.min(ga.bpm[1], gb.bpm[1]), `${m.text} @ ${m.bpm}`)
+    if (ATMOSPHERIC.has(a)) assert.ok(BED_FRIENDLY.has(b), `${a} should not cross with ${b}`)
+    if (ATMOSPHERIC.has(b)) assert.ok(BED_FRIENDLY.has(a), `${b} should not cross with ${a}`)
+    const parts = m.text.split(', ')
+    assert.notEqual(parts[1], parts[2], `the same instrument twice in "${m.text}"`)
+  }
+  assert.ok(fusions > 200, `only ${fusions} fusions in 3000 ideas`)
 })
