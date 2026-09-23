@@ -111,14 +111,15 @@ with 80s power ballad" is two records playing at once. The two genres never cont
 instrument twice. **Production notes** respect how the music is made: a sample-built genre is never
 "recorded live in one room".
 
-**Categories.** Under the image prompt, an **Ideas:** row of toggles decides what ⟳ New idea may
-offer: **Photoreal** (people, places, wildlife, food, finished as photographs), **Artwork** (the same
+**Categories.** Beside the image prompt, an **Idea types** menu decides what ⟳ New idea may offer: **Photoreal** (people, places, wildlife, food, finished as photographs), **Artwork** (the same
 scenes finished as painting, drawing, print or render), **Design** (posters, covers, labels, packaging)
 and **Birthday cards** (a recipient, a scene that suits them, a card style and a reserved space for
 the greeting). The ticked set narrows both the shapes and the finish, so Photoreal never returns an
 oil painting and Artwork never returns a Polaroid; with a set ticked the hand-written seeds are
 skipped, since they are all photoreal scenes and would quietly ignore a request for cards. The last
-tick cannot be removed, and the choice is remembered. Card recipients carry their own scenes for the
+tick cannot be removed, and the choice is remembered. The menu is a `<details>` so it opens and
+closes on its own; the one thing that needs script is closing it when you click elsewhere. Its
+summary reads "All", the single category's name, or "N of 4". Card recipients carry their own scenes for the
 same reason the music uses do — a card for someone who loves horses should not show a cat asleep on
 the presents.
 

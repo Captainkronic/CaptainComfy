@@ -1,5 +1,5 @@
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ASPECTS, type AspectKey, type ImageParams } from '@shared/types'
 import { sizeFor } from '@shared/sizing'
 import { IMAGE_MODELS, imageModel, imageQualityOf, type ImageModel, type ImageQuality } from '@shared/models'
@@ -21,6 +21,32 @@ function rememberedCats(): IdeaCategory[] {
 }
 function remembered(): { model: ImageModel; quality: ImageQuality } {
   try { const q = localStorage.getItem(QUALITY_KEY); const m = imageModel(localStorage.getItem(MODEL_KEY) ?? undefined); return { model: m, quality: q && q in IMAGE_MODELS[m].presets ? (q as ImageQuality) : 'balanced' } } catch { return { model: 'zimage', quality: 'balanced' } }
+}
+
+/** The idea categories, tucked into a menu so the prompt field keeps its space. A <details> gives
+ *  the open/close behaviour for free; the only thing it lacks is closing when you click elsewhere. */
+function IdeaTypes({ cats, onToggle }: { cats: IdeaCategory[]; onToggle: (k: IdeaCategory) => void }): JSX.Element {
+  const box = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const away = (e: MouseEvent): void => { const d = box.current; if (d?.open && !d.contains(e.target as Node)) d.open = false }
+    document.addEventListener('mousedown', away)
+    return () => document.removeEventListener('mousedown', away)
+  }, [])
+  const chosen = IDEA_CATEGORIES.filter((c) => cats.includes(c.key))
+  const summary = chosen.length === IDEA_CATEGORIES.length ? 'All' : chosen.length === 1 ? chosen[0]!.label : `${chosen.length} of ${IDEA_CATEGORIES.length}`
+  return (
+    <details className="dropdown" ref={box}>
+      <summary title={`New idea draws on: ${chosen.map((c) => c.label).join(', ')}`}>Idea types: {summary} ▾</summary>
+      <div className="menu">
+        {IDEA_CATEGORIES.map((c) => (
+          <label key={c.key} className={cats.includes(c.key) ? 'on' : ''}>
+            <input type="checkbox" checked={cats.includes(c.key)} onChange={() => onToggle(c.key)} />
+            <span>{c.label}<small>{c.hint}</small></span>
+          </label>
+        ))}
+      </div>
+    </details>
+  )
 }
 
 export default function ImageForm(): JSX.Element {
@@ -46,16 +72,15 @@ export default function ImageForm(): JSX.Element {
   const seconds = quality ? presets[quality].seconds : 0
   return (
     <>
-      <div className="field"><label>Prompt <Suggest kind="image" current={p.prompt} onPick={(s) => up('prompt', s)} cats={cats} /></label>
-        <textarea value={p.prompt} onChange={(e) => up('prompt', e.target.value)} placeholder="a woman with curly hair at a sunny harbor, pastel houses behind" />
-        <div className="ideacats">
-          <span className="meta">Ideas:</span>
-          {IDEA_CATEGORIES.map((c) => (
-            <label key={c.key} className={cats.includes(c.key) ? 'on' : ''} title={c.hint}>
-              <input type="checkbox" checked={cats.includes(c.key)} onChange={() => toggleCat(c.key)} /> {c.label}
-            </label>
-          ))}
+      <div className="field">
+        <div className="fieldhead">
+          <label>Prompt</label>
+          <span className="controls">
+            <IdeaTypes cats={cats} onToggle={toggleCat} />
+            <Suggest kind="image" current={p.prompt} onPick={(s) => up('prompt', s)} cats={cats} />
+          </span>
         </div>
+        <textarea value={p.prompt} onChange={(e) => up('prompt', e.target.value)} placeholder="a woman with curly hair at a sunny harbor, pastel houses behind" />
         <div className="hint">{p.enrich ? 'A short idea is enough. Gemma adds setting, light, lens and style before rendering.' : 'Used exactly as written.'}</div>
       </div>
       <label className="toggle"><input type="checkbox" checked={p.enrich} onChange={(e) => up('enrich', e.target.checked)} /> Enrich with Gemma</label>

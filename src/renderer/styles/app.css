@@ -69,11 +69,26 @@ audio { width: 100%; }
 .settings { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--fg-muted); }
 .settings b { color: var(--fg); font-weight: 600; }
 
-/* Which kinds of idea "New idea" may offer. Reads as a row of small toggles under the prompt. */
-.ideacats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
-.ideacats .meta { margin-right: 2px; }
-.ideacats label { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg-dim); font-size: 11.5px; cursor: pointer; user-select: none;
-  /* .field label above sets uppercase + spacing for real field titles; these are chips. */
-  text-transform: none; letter-spacing: normal; margin-bottom: 0; }
-.ideacats label.on { color: var(--fg); border-color: var(--accent-line); background: var(--accent-soft); }
-.ideacats input { width: auto; margin: 0; }
+/* A field header that carries its own controls on the right. */
+.fieldhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.fieldhead label { margin-bottom: 0; }
+.fieldhead .controls { display: flex; align-items: center; gap: 6px; }
+
+/* "Idea types": the categories New idea may draw on, tucked into a menu. */
+.dropdown { position: relative; }
+.dropdown > summary { list-style: none; cursor: pointer; white-space: nowrap; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px;
+  color: var(--fg-muted); font-size: 11.5px; text-transform: none; letter-spacing: normal; }
+.dropdown > summary::-webkit-details-marker { display: none; }
+.dropdown > summary:hover { color: var(--fg); border-color: var(--line-strong); }
+.dropdown[open] > summary { color: var(--fg); border-color: var(--accent-line); background: var(--accent-soft); }
+.dropdown .menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 236px; padding: 6px;
+  background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.45); display: grid; gap: 2px; }
+/* .field label above is justify-content: space-between for real field titles; these are menu rows,
+   so the box and its text sit together on the left. */
+.dropdown .menu label { display: flex; align-items: flex-start; justify-content: flex-start; gap: 9px; padding: 7px 9px; border-radius: 7px; cursor: pointer;
+  color: var(--fg-muted); font-size: 12.5px; font-weight: 500; text-transform: none; letter-spacing: normal; margin-bottom: 0; text-align: left; }
+.dropdown .menu label > span { flex: 1; }
+.dropdown .menu label:hover { background: var(--bg-hover); }
+.dropdown .menu label.on { color: var(--fg); }
+.dropdown .menu label small { display: block; color: var(--fg-dim); font-size: 10.5px; font-weight: 400; margin-top: 1px; }
+.dropdown .menu input { width: auto; margin: 2px 0 0; flex: none; }
