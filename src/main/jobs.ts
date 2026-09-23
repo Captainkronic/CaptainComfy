@@ -110,6 +110,21 @@ export class JobManager {
   }
   clearFinished(): void { this.jobs = this.jobs.filter((j) => j.status === 'queued' || j.status === 'enriching' || j.status === 'running'); this.save() }
 
+  /** Drop one finished run from the list. Its images, if it made any, stay where ComfyUI wrote them:
+   *  removing a card is tidying, not deleting, and a result's own Delete is what removes a file.
+   *  A run that is still queued or rendering is refused so the pump never loses the job under it. */
+  remove(id: string): { removed: boolean; detail: string } {
+    const job = this.jobs.find((j) => j.id === id)
+    if (!job) return { removed: true, detail: 'Already gone' }
+    if (job.status === 'queued' || job.status === 'enriching' || job.status === 'running') {
+      return { removed: false, detail: 'That run is still going: cancel it first.' }
+    }
+    this.jobs = this.jobs.filter((j) => j.id !== id)
+    this.save()
+    console.log(`[lite] removed ${job.status} ${job.kind} run ${id} from the list (${job.outputs.length} image(s) left on disk)`)
+    return { removed: true, detail: `Removed ${job.kind} run ${id}` }
+  }
+
   /** Drop a deleted result from whichever job produced it. */
   forgetOutput(o: { subfolder: string; filename: string }): void {
     for (const job of this.jobs) {

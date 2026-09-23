@@ -10,6 +10,8 @@ interface State {
   /** A result sent to the Edit tab with its Edit button; the form picks it up. */
   editSource: Output | null
   setEditSource: (o: Output | null) => void
+  /** Drop a removed run from the list; main has already taken it out of jobs.json. */
+  removeJob: (id: string) => void
   setTab: (t: Tab) => void
   boot: () => Promise<void>
   refreshHealth: () => Promise<void>
@@ -17,6 +19,7 @@ interface State {
 export const useStore = create<State>((set, get) => ({
   tab: 'image', jobs: [], health: null, editSource: null,
   setEditSource: (editSource) => set({ editSource }),
+  removeJob: (id) => set((st) => ({ jobs: st.jobs.filter((j) => j.id !== id) })),
   setTab: (tab) => set({ tab }),
   boot: async () => {
     set({ jobs: await call('jobs:list') })

@@ -58,6 +58,8 @@ output folder at the same path and a name like `image_00069_.png` exists on each
 pictures inside. The name has to pass `safeResultName` first, so only ordinary result names resolve,
 and the result is then dropped from the job.
 
+Runs themselves are cleared separately, and this never touches a file. Every finished run has **🗑 Delete** in its header (**Delete run** when it still has images, to keep it distinct from the Delete under an image), and the results header carries **🗑 Delete N cancelled or failed** to sweep the ones that produced nothing — the pile that actually accumulates. A run still queued or rendering is refused with a message: cancel it first, so the pump never loses a job under itself. `Clear finished` remains the blunt instrument that drops every finished run of that kind.
+
 **Studio side (done on 2026-09-13):** Comfy Desktop's launch args include
 `--listen 127.0.0.1,100.120.207.33`, so ComfyUI listens on loopback *and* its
 tailnet address, never on the LAN. oMLX already listens on all interfaces. There is

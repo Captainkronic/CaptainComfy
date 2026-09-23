@@ -94,6 +94,7 @@ handle('dialog:pickImage', async () => {
 })
 handle('jobs:cancel', async (id) => jobs.cancel(id))
 handle('jobs:clearFinished', async () => jobs.clearFinished())
+handle('jobs:remove', async (id) => jobs.remove(id))
 handle('enrich:preview', async (mode, text) => {
   const s = settings.get()
   if (jobs.busy()) return { text, used: false, detail: 'A job is running; Gemma would not fit beside it. Try again when it finishes.' }

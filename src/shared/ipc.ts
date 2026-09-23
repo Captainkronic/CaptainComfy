@@ -34,6 +34,10 @@ export interface IpcApi {
   'dialog:pickImage': () => Promise<{ path: string; name: string; preview: string } | null>
   'jobs:cancel': (id: string) => Promise<void>
   'jobs:clearFinished': () => Promise<void>
+  /** Drop one finished run from the list. Cancelled and failed runs leave nothing behind, so this
+   *  just tidies up; a run that produced images keeps them, which is what a result's own Delete is
+   *  for. A run still going is refused: cancel it first. */
+  'jobs:remove': (id: string) => Promise<{ removed: boolean; detail: string }>
   'enrich:preview': (mode: EnrichMode, text: string) => Promise<{ text: string; used: boolean; detail: string }>
   'shell:reveal': (output: Output) => Promise<void>
   /** Save a result to a location the user picks (defaults to ~/Downloads). Works locally and over the tailnet. */

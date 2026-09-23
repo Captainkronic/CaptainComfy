@@ -65,6 +65,29 @@ function DeleteButton({ o }: { o: Output }): JSX.Element {
   )
 }
 
+/** Remove a finished run from the list. Cancelled and failed runs leave nothing behind, so this is
+ *  pure tidying; a run that produced images keeps them on disk, and the Delete under an image is what
+ *  removes a file. Main refuses a run that is still going, and says so. */
+function RemoveRunButton({ job }: { job: Job }): JSX.Element {
+  const removeJob = useStore((s) => s.removeJob)
+  const [err, setErr] = useState('')
+  const keepsFiles = job.outputs.length > 0
+  const go = async (): Promise<void> => {
+    setErr('')
+    try { const r = await call('jobs:remove', job.id); if (r.removed) removeJob(job.id); else setErr(r.detail) }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)) }
+  }
+  return (
+    <>
+      <button className="btn ghost danger" onClick={() => { void go() }}
+        title={keepsFiles ? 'Remove this run from the list. Its images stay on disk: use Delete under an image to remove the file.' : 'Remove this run from the list'}>
+        🗑 Delete{keepsFiles ? ' run' : ''}
+      </button>
+      {err && <span className="err">{err}</span>}
+    </>
+  )
+}
+
 /** Send a result to the Edit tab: the form loads it, you describe the change, the Klein edit runs on it. */
 function EditButton({ o }: { o: Output }): JSX.Element {
   const setEditSource = useStore((s) => s.setEditSource); const setTab = useStore((s) => s.setTab)
@@ -82,6 +105,7 @@ function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; l
         <span className="prompt" style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{summary}</span>
         <span className="meta">{elapsed(job)}</span>
         {live && <button className="btn ghost" onClick={() => { void call('jobs:cancel', job.id) }}>Cancel</button>}
+        {!live && <RemoveRunButton job={job} />}
       </div>
       <Settings job={job} />
       {job.kind === 'image' && <details className="prompt-preview"><summary>Prompt as typed</summary><div className="enriched">{(params as ImageParams).prompt}</div></details>}
@@ -129,12 +153,22 @@ function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; l
 export default function JobList({ kind }: { kind: Kind }): JSX.Element {
   const jobs = useStore((s) => s.jobs).filter((j) => j.kind === kind)
   const local = useStore((s) => (s.health ? isLoopback(s.health.comfy.host) : true))
+  const removeJob = useStore((s) => s.removeJob)
   const [zoom, setZoom] = useState<Output | null>(null)
+  // Runs that produced nothing. They are the ones that pile up, so they get their own sweep: it
+  // touches no files, and leaves finished runs and anything still going alone.
+  const spent = jobs.filter((j) => j.status === 'failed' || j.status === 'cancelled')
+  const clearSpent = async (): Promise<void> => {
+    for (const j of spent) { const r = await call('jobs:remove', j.id); if (r.removed) removeJob(j.id) }
+  }
   return (
     <div className="results">
       <div className="head" style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <span className="meta">{jobs.length} {kind} job{jobs.length === 1 ? '' : 's'}</span>
-        <button className="btn ghost" onClick={() => { void call('jobs:clearFinished').then(() => location.reload()) }}>Clear finished</button>
+        <span className="meta">{jobs.length} {kind} job{jobs.length === 1 ? '' : 's'}{spent.length > 0 ? `, ${spent.length} of them cancelled or failed` : ''}</span>
+        <span>
+          {spent.length > 0 && <button className="btn ghost danger" title="Remove every cancelled or failed run of this kind from the list. No files are touched." onClick={() => { void clearSpent() }}>🗑 Delete {spent.length} cancelled or failed</button>}
+          <button className="btn ghost" onClick={() => { void call('jobs:clearFinished').then(() => location.reload()) }}>Clear finished</button>
+        </span>
       </div>
       {jobs.length === 0 && <div className="empty">Nothing yet. Fill in the form and press Generate.</div>}
       {jobs.map((j) => <Card key={j.id} job={j} onZoom={setZoom} local={local} />)}
