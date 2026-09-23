@@ -80,11 +80,30 @@ Nothing else to install: no Python, no models, no ComfyUI.
 ## Suggestions
 
 Every prompt box opens pre-filled with an idea, and **⟳ New idea** swaps in another. Ideas are
-assembled from curated parts in `src/shared/ideas.ts` (subjects, settings, light, lens, style;
-genres with their own tempo range, instruments, moods, vocals; edit operations; lyric themes),
-which gives well over 100,000 distinct image prompts and thousands of music styles, each with a
-bpm that fits its genre. About one in seven picks is one of the hand-written seeds in
-`suggestions.ts`. Edit either file to steer the vocabulary.
+assembled from curated parts in `src/shared/ideas.ts`: ~115 million distinct image prompts, ~437,000
+music styles each with a bpm that fits its genre, and ~6,000 lyric themes. About one in twelve picks
+is one of the hand-written seeds in `suggestions.ts`. Edit either file to steer the vocabulary.
+
+**Shapes, not one template.** The first version emitted `<subject> <setting>, <light>, <lens>,
+<style>` every single time, so despite tens of thousands of combinations every idea read as the same
+sentence with the nouns swapped — the complaint was that it repeated itself, and the template was the
+repetition. Images now pick between thirteen shapes (a person mid-action, a ready-made vignette, a
+moment happening around someone, wildlife, an empty place, a still life, an interior, a genre scene,
+a deliberate absurdity, a design brief, a period piece, pure texture, food) and music between five
+(genre-led, written as a brief for a use, two genres crossed, led by one instrument, described by its
+production).
+
+**Things that have to agree.** A flat list of parts produces nonsense, so the vocabulary is tagged:
+subjects carry where they belong (a glassblower indoors, a shepherd outdoors, a monk either), light
+follows the room (no projector beam on a hilltop chapel), outdoor-only actions never land indoors (no
+sheltering under an awning inside a boxing gym), subjects that name their own setting do not get a
+second one (no busy kitchen inside an aircraft hangar), animals get actions and places that suit land,
+water or air (no cat caught mid-flight, no dolphin in tall grass), and two genres only fuse when
+their tempo ranges overlap, so the bpm stays honest for both names.
+
+**A short memory.** `fresh()` holds the last eight head-words per kind and re-rolls when one comes up
+again, so you do not get three lighthouses in a row just because the dice said so. Measured: 0.45
+repeated head-words per twelve image ideas, 0.22 repeated lyric ideas per eight.
 
 ## Image models
 

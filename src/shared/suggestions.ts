@@ -1,4 +1,5 @@
-/** Pre-canned starting points. Short on purpose: Gemma expands them when Enrich is on. */
+/** Hand-written anchors, mixed in at about one in twelve so the feed keeps some human-written
+ *  phrasing among the generated ideas. Short on purpose: Gemma expands them when Enrich is on. */
 export const SUGGESTIONS = {
   image: [
     'a woman with curly hair at a sunny harbor, pastel houses behind',
@@ -20,7 +21,17 @@ export const SUGGESTIONS = {
     'a farmhouse kitchen table with fresh bread and tomatoes, morning light',
     'a surfer walking out of the ocean at sunset, board under arm',
     'a fox in a snowy birch forest looking straight at the camera',
-    'a vintage record shop interior, crates of vinyl, afternoon light'
+    'a vintage record shop interior, crates of vinyl, afternoon light',
+    'a beekeeper lifting a frame in an orchard, veil catching the light',
+    'an overgrown petrol station reclaimed by vines, flat midday light',
+    'a swimmer alone in an olympic pool seen from directly above',
+    'two chairs on a porch facing a storm rolling in',
+    'a watchmaker\'s bench, tiny parts laid out on velvet',
+    'a night bus lit from inside, empty, passing a wet street',
+    'a market stall of unfamiliar fruit, hand-painted signs',
+    'a climber\'s hands chalked and gripping cold rock',
+    'a cathedral interior with light falling through dust',
+    'a fishing boat hauling nets in grey open sea'
   ],
   edit: [
     'change the jacket to red, keep everything else the same',
@@ -54,7 +65,15 @@ export const SUGGESTIONS = {
     { text: '80s power ballad, gated drums, big synths, soaring vocal', bpm: 70 },
     { text: 'minimal piano and cello, melancholic, instrumental', bpm: 66 },
     { text: 'funky disco, slap bass, horns, group vocals', bpm: 116 },
-    { text: 'ambient drone with soft field recordings, instrumental', bpm: 60 }
+    { text: 'ambient drone with soft field recordings, instrumental', bpm: 60 },
+    { text: 'dubby post-punk, tape delay guitar, restless bass, deadpan vocal', bpm: 124 },
+    { text: 'west african highlife, interlocking guitars, bright horns, group vocals', bpm: 112 },
+    { text: 'slow gospel-soul, Hammond organ, choir swells, powerhouse lead vocal', bpm: 76 },
+    { text: 'UK garage, shuffled two-step drums, sub bass, chopped vocal stabs', bpm: 132 },
+    { text: 'spaghetti western score, twanging guitar, whistle, distant trumpet', bpm: 92 },
+    { text: 'liquid drum and bass, rolling breaks, warm pads, soulful female vocal', bpm: 174 },
+    { text: 'klezmer, clarinet lead, accordion, frantic and joyful', bpm: 138 },
+    { text: 'doom metal, downtuned riffs, glacial drums, bellowed vocal', bpm: 62 }
   ],
   lyrics: [
     'a song about staying one more day in a small harbor town',
@@ -71,21 +90,28 @@ export const SUGGESTIONS = {
     'a song about a lighthouse keeper who talks to the sea',
     'a song about learning to say no',
     'a song about a train journey through the mountains',
-    'a song about a friend who always shows up'
+    'a song about a friend who always shows up',
+    'a song about the week the factory closed',
+    'a song about teaching someone to swim',
+    'a song about a coat that still smells like them',
+    'a song about moving a piano up three flights',
+    'a song about a radio station that only plays at night',
+    'a song about the dog that found its way home',
+    'a song about a jar of coins saved for something better'
   ]
 } as const
 export type SuggestionKind = keyof typeof SUGGESTIONS
 
 import { editIdea, imageIdea, lyricIdea, musicIdea } from './ideas'
 
-/** Mostly generated (tens of thousands of combinations), occasionally one of the hand-written seeds. */
+/** Mostly generated (millions of combinations), occasionally one of the hand-written seeds. */
 export function pickStyle(not?: string): { text: string; bpm: number } {
-  if (Math.random() < 0.15) { const pool = SUGGESTIONS.musicStyle.filter((s) => s.text !== not); return pool[Math.floor(Math.random() * pool.length)] ?? SUGGESTIONS.musicStyle[0]! }
+  if (Math.random() < 0.08) { const pool = SUGGESTIONS.musicStyle.filter((s) => s.text !== not); return pool[Math.floor(Math.random() * pool.length)] ?? SUGGESTIONS.musicStyle[0]! }
   let m = musicIdea(); if (m.text === not) m = musicIdea(); return m
 }
 
 export function pick(kind: Exclude<SuggestionKind, 'musicStyle'>, not?: string): string {
-  if (Math.random() >= 0.15) {
+  if (Math.random() >= 0.08) {
     const gen = kind === 'image' ? imageIdea : kind === 'edit' ? editIdea : lyricIdea
     let s = gen(); if (s === not) s = gen(); return s
   }
