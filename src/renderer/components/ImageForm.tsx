@@ -3,20 +3,38 @@ import { useState } from 'react'
 import { ASPECTS, type AspectKey, type ImageParams } from '@shared/types'
 import { sizeFor } from '@shared/sizing'
 import { IMAGE_MODELS, imageModel, imageQualityOf, type ImageModel, type ImageQuality } from '@shared/models'
+import { IDEA_CATEGORIES, type IdeaCategory } from '@shared/ideas'
 import { call } from '../lib'
 import { pick } from '@shared/suggestions'
 import Suggest from './Suggest'
 import Segmented from './Segmented'
 
-const QUALITY_KEY = 'captaincomfy.imageQuality', MODEL_KEY = 'captaincomfy.imageModel'
+const QUALITY_KEY = 'captaincomfy.imageQuality', MODEL_KEY = 'captaincomfy.imageModel', CATS_KEY = 'captaincomfy.ideaCategories'
+/** Which kinds of idea ⟳ New idea may offer. All of them until you say otherwise. */
+function rememberedCats(): IdeaCategory[] {
+  const all = IDEA_CATEGORIES.map((c) => c.key)
+  try {
+    const raw = localStorage.getItem(CATS_KEY); if (!raw) return all
+    const saved = (JSON.parse(raw) as string[]).filter((k): k is IdeaCategory => all.includes(k as IdeaCategory))
+    return saved.length ? saved : all
+  } catch { return all }
+}
 function remembered(): { model: ImageModel; quality: ImageQuality } {
   try { const q = localStorage.getItem(QUALITY_KEY); const m = imageModel(localStorage.getItem(MODEL_KEY) ?? undefined); return { model: m, quality: q && q in IMAGE_MODELS[m].presets ? (q as ImageQuality) : 'balanced' } } catch { return { model: 'zimage', quality: 'balanced' } }
 }
 
 export default function ImageForm(): JSX.Element {
   const r0 = remembered(); const q0 = IMAGE_MODELS[r0.model].presets[r0.quality]
-  const [p, setP] = useState<ImageParams>({ prompt: pick('image'), enrich: true, model: r0.model, aspect: '1:1', megapixels: q0.megapixels, count: 1, steps: q0.steps, seed: null, upscale: q0.upscale })
+  // The opening idea honours the remembered categories too, or the form contradicts its own toggles.
+  const [p, setP] = useState<ImageParams>({ prompt: pick('image', undefined, rememberedCats()), enrich: true, model: r0.model, aspect: '1:1', megapixels: q0.megapixels, count: 1, steps: q0.steps, seed: null, upscale: q0.upscale })
   const [busy, setBusy] = useState(false)
+  const [cats, setCats] = useState<IdeaCategory[]>(rememberedCats)
+  // Unticking the last category would leave New idea nothing to draw on, so the last one stays put.
+  const toggleCat = (k: IdeaCategory): void => {
+    const next = cats.includes(k) ? cats.filter((c) => c !== k) : [...cats, k]
+    if (!next.length) return
+    setCats(next); try { localStorage.setItem(CATS_KEY, JSON.stringify(next)) } catch { /* not vital */ }
+  }
   const model = imageModel(p.model); const spec = IMAGE_MODELS[model]; const presets = spec.presets
   const size = sizeFor(p.aspect, p.megapixels, spec.snap)
   const quality = imageQualityOf(p)
@@ -28,8 +46,16 @@ export default function ImageForm(): JSX.Element {
   const seconds = quality ? presets[quality].seconds : 0
   return (
     <>
-      <div className="field"><label>Prompt <Suggest kind="image" current={p.prompt} onPick={(s) => up('prompt', s)} /></label>
+      <div className="field"><label>Prompt <Suggest kind="image" current={p.prompt} onPick={(s) => up('prompt', s)} cats={cats} /></label>
         <textarea value={p.prompt} onChange={(e) => up('prompt', e.target.value)} placeholder="a woman with curly hair at a sunny harbor, pastel houses behind" />
+        <div className="ideacats">
+          <span className="meta">Ideas:</span>
+          {IDEA_CATEGORIES.map((c) => (
+            <label key={c.key} className={cats.includes(c.key) ? 'on' : ''} title={c.hint}>
+              <input type="checkbox" checked={cats.includes(c.key)} onChange={() => toggleCat(c.key)} /> {c.label}
+            </label>
+          ))}
+        </div>
         <div className="hint">{p.enrich ? 'A short idea is enough. Gemma adds setting, light, lens and style before rendering.' : 'Used exactly as written.'}</div>
       </div>
       <label className="toggle"><input type="checkbox" checked={p.enrich} onChange={(e) => up('enrich', e.target.checked)} /> Enrich with Gemma</label>

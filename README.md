@@ -111,6 +111,17 @@ with 80s power ballad" is two records playing at once. The two genres never cont
 instrument twice. **Production notes** respect how the music is made: a sample-built genre is never
 "recorded live in one room".
 
+**Categories.** Under the image prompt, an **Ideas:** row of toggles decides what ⟳ New idea may
+offer: **Photoreal** (people, places, wildlife, food, finished as photographs), **Artwork** (the same
+scenes finished as painting, drawing, print or render), **Design** (posters, covers, labels, packaging)
+and **Birthday cards** (a recipient, a scene that suits them, a card style and a reserved space for
+the greeting). The ticked set narrows both the shapes and the finish, so Photoreal never returns an
+oil painting and Artwork never returns a Polaroid; with a set ticked the hand-written seeds are
+skipped, since they are all photoreal scenes and would quietly ignore a request for cards. The last
+tick cannot be removed, and the choice is remembered. Card recipients carry their own scenes for the
+same reason the music uses do — a card for someone who loves horses should not show a cat asleep on
+the presents.
+
 **A short memory.** `fresh()` holds the last eight head-words per kind and re-rolls when one comes up
 again, so you do not get three lighthouses in a row just because the dice said so. Measured: 0.45
 repeated head-words per twelve image ideas, 0.22 repeated lyric ideas per eight.

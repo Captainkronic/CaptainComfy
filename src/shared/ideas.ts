@@ -117,46 +117,116 @@ const ABSTRACT = ['flowing ink in water', 'cracked dry earth', 'layered sediment
 const POSTER_BRIEFS = ['a travel poster for a place that does not exist', 'a festival poster for a music festival on a glacier', 'a book cover for a novel about a lighthouse', 'a coffee packaging label', 'a film poster for a heist set in a bakery', 'a museum exhibition poster about deep time', 'an album cover for an ambient record', 'a poster for a night bus service', 'a wine label for a small vineyard', 'a poster for a public library', 'a cover for a magazine about cold-water swimming', 'a seed packet illustration', 'a poster for a chess tournament', 'a label for hot sauce', 'a cover for a field guide to clouds']
 const FOOD = ['a bowl of ramen with a soft egg', 'a tray of pastries fresh from the oven', 'a roast dinner mid-carve', 'a stack of pancakes with syrup pouring', 'street tacos on a paper plate', 'a cheese board with figs and honey', 'a pot of stew on a stove', 'shaved ice with fruit syrup', 'a full English breakfast', 'dumplings in a bamboo steamer']
 
-const IMAGE_SHAPES: readonly (readonly [number, () => { text: string; key: string }])[] = [
-  // A person, doing something, somewhere that suits them. The bread and butter.
-  [24, () => { const [who, where] = r(PEOPLE); const p = placeFor(where); const parts = [`${who} ${actionFor(p.inside)}`, p.place, lightFor(p.inside)].filter(Boolean)
-    if (maybe(0.6)) parts.push(r(LENS)); parts.push(r(ALL_MEDIA)); if (maybe(0.35)) parts.push(`${r(MOOD)} mood`)
-    return { text: parts.join(', '), key: who } }],
-  // A ready-made vignette, which already has its own action.
-  [12, () => { const [who, where] = r(VIGNETTES); const p = placeFor(where); const parts = [who, p.place, lightFor(p.inside)].filter(Boolean)
-    if (maybe(0.5)) parts.push(r(LENS)); parts.push(r(ALL_MEDIA))
-    return { text: parts.join(', '), key: who } }],
-  // Built around a moment happening around them.
-  [9, () => { const [who, where] = r(PEOPLE); const inside = where === 'in'
-    return { text: [`${who} ${actionFor(inside)} as ${r(EVENTS)}`, inside ? r(INDOORS) : r(OUTDOORS), lightFor(inside), r(ALL_MEDIA)].join(', '), key: who } }],
-  // Wildlife, in wild places only.
-  [12, () => { const [a, habitat] = r(ANIMALS); const parts = [`${a} ${r(actsFor(habitat))}`, r(habitat === 'water' ? WATER_PLACES : WILD), lightFor(false)]
-    if (maybe(0.5)) parts.push(r(LENS)); parts.push(r(ALL_MEDIA))
-    return { text: parts.join(', '), key: a } }],
-  // A place, with no one in it.
-  [13, () => { const pl = r(PLACES); const parts = [pl, lightFor(false)]
-    if (maybe(0.6)) parts.push(r(LENS)); parts.push(r(ALL_MEDIA)); if (maybe(0.4)) parts.push(`${r(MOOD)} mood`)
-    return { text: parts.join(', '), key: pl } }],
-  // Still life.
-  [8, () => { const o = r(OBJECTS); return { text: [`a still life of ${o}`, r(SURFACES), lightFor(true), r(maybe(0.5) ? PHOTO_MEDIA : PAINT_MEDIA)].join(', '), key: o } }],
-  // Interior, architectural, empty.
-  [6, () => { const s = r(INDOORS); return { text: [`the empty interior of ${s.replace(/^in /, '')}`, lightFor(true), r(LENS), r(ALL_MEDIA)].join(', '), key: s } }],
-  // Genre fiction: sci-fi, fantasy, noir, western.
-  [9, () => { const g = r(GENRE_SCENES); return { text: [g, r(LIGHT), r(maybe(0.6) ? RENDER_MEDIA : ALL_MEDIA), `${r(MOOD)} mood`].join(', '), key: g } }],
-  // Deliberate nonsense: the one shape allowed to put the wrong thing in the wrong place.
-  [5, () => { const a = r(ANIMALS)[0]; const b = r(URBAN); return { text: [`${a} ${b}, impossibly out of place`, lightFor(false), r(ALL_MEDIA), `${r(MOOD)} mood`].join(', '), key: a } }],
-  // A design brief rather than a scene.
-  [5, () => { const b = r(POSTER_BRIEFS); return { text: [b, r(PALETTE), r(GRAPHIC_MEDIA)].join(', '), key: b } }],
-  // Period piece.
-  [4, () => { const [who, where] = r(PEOPLE); const e = r(ERA); const p = placeFor(where)
-    return { text: [`${who} in ${e}`, p.place, lightFor(p.inside), r(ALL_MEDIA)].filter(Boolean).join(', '), key: e } }],
-  // Pure texture.
-  [4, () => { const a = r(ABSTRACT); return { text: [`an abstract close-up of ${a}`, r(PALETTE), r(LIGHT), r(maybe(0.5) ? PHOTO_MEDIA : RENDER_MEDIA)].join(', '), key: a } }],
-  // Food.
-  [4, () => { const f = r(FOOD); return { text: [f, r(SURFACES), lightFor(true), (maybe(0.7) ? 'overhead flat lay' : r(LENS)), r(PHOTO_MEDIA)].join(', '), key: f } }]
+/** What kind of picture you are after. The generator only draws on the shapes and media the ticked
+ *  categories cover, so "Birthday cards" alone gives card briefs and nothing else. */
+export type IdeaCategory = 'photoreal' | 'artwork' | 'design' | 'cards'
+export const IDEA_CATEGORIES: readonly { key: IdeaCategory; label: string; hint: string }[] = [
+  { key: 'photoreal', label: 'Photoreal', hint: 'people, places, wildlife, food' },
+  { key: 'artwork', label: 'Artwork', hint: 'painted, drawn, rendered' },
+  { key: 'design', label: 'Design', hint: 'posters, covers, labels' },
+  { key: 'cards', label: 'Birthday cards', hint: 'greetings with room for lettering' }
 ]
-export function imageIdea(): string {
-  return fresh('image', () => weighted(IMAGE_SHAPES)(), (v) => v.key).text
+const ALL_CATEGORIES: readonly IdeaCategory[] = IDEA_CATEGORIES.map((c) => c.key)
+
+/* birthday and greeting cards: a scene, a style, and a reserved space for the words */
+/** Who the card is for, and the scenes that suit them. A card for someone who loves horses should
+ *  not show a cat asleep on the presents, so each recipient carries their own; the generic party
+ *  scenes below suit anybody and are always in the running. */
+export const CARD_FOR: readonly (readonly [string, readonly string[]])[] = [
+  ['a 3-year-old who loves diggers', ['a digger lifting a wrapped present', 'a building site of friendly machines', 'a dumper truck full of balloons']],
+  ['a 4-year-old who loves dinosaurs', ['a dinosaur wearing a party hat', 'a brontosaurus balancing a cake on its nose', 'three small dinosaurs pulling a banner']],
+  ['a 5-year-old who loves trains', ['a steam train loaded with gifts', 'a level crossing with bunting', 'a little red engine puffing hearts']],
+  ['a 6-year-old who loves space', ['a rocket launching past planets', 'an astronaut floating with balloons', 'a starry sky with a comet']],
+  ['a 7-year-old who loves horses', ['a horse with ribbons in its mane', 'a pony leaning over a gate for a carrot', 'a rocking horse surrounded by presents']],
+  ['an 8-year-old who loves football', ['a football match between hedgehogs', 'a ball bursting through a paper banner', 'muddy boots and a trophy']],
+  ['a 10-year-old who loves drawing', ['a jar of pencils spilling colour', 'a sketchbook open on a garden table', 'a paint palette shaped like a cake']],
+  ['a teenager who loves skateboarding', ['a skateboard leaning on a graffiti wall', 'a half-pipe strung with bunting', 'trainers and a board at sunset']],
+  ['a friend who loves cycling', ['a bicycle decked in bunting', 'a bike leaning against a sunlit wall', 'a basket of flowers on a handlebar']],
+  ['a sister who loves gardening', ['a garden in full bloom', 'a greenhouse with a cake on the potting bench', 'a watering can spilling wildflowers']],
+  ['a dad who loves fishing', ['a fishing boat strung with flags', 'a rowing boat on a still lake at dawn', 'a tackle box and a flask']],
+  ['a mum who loves baking', ['a tower of stacked cupcakes', 'a kitchen table of fresh cakes', 'a rolling pin and flour handprints']],
+  ['a grandmother turning 80', ['a picnic under a big tree', 'a teapot and two cups among roses', 'a garden in full bloom']],
+  ['a grandfather who loves birdwatching', ['a pair of binoculars and a bird book', 'a robin on a frosty fence post', 'a marching band of woodland animals']],
+  ['a colleague retiring', ['a deckchair facing an open sea', 'a desk plant escaping its pot', 'a hot air balloon over patchwork fields']],
+  ['a best friend turning 30', ['balloons rising over rooftops', 'a cake with candles', 'two mugs clinking over a table']],
+  ['someone turning 40', ['a cake with candles', 'a mountain path with a flag at the top', 'balloons rising over rooftops']],
+  ['someone turning 50', ['a cake with candles', 'a vintage car trailing ribbons', 'a record player and a stack of vinyl']],
+  ['a cat lover', ['a cat asleep on a pile of presents', 'three kittens in a gift box', 'a cat batting at a hanging balloon']],
+  ['a new baby', ['a mobile of paper stars', 'a crib surrounded by sleeping animals', 'tiny boots and a knitted blanket']],
+  ['a friend who just passed their exams', ['a graduation cap thrown in the air', 'a tower of books with a party hat on top', 'a paper aeroplane over a desk']]
+]
+/** Party scenes that suit anyone. */
+const GENERIC_CARD_SCENES = ['a cake with candles', 'balloons rising over rooftops', 'a parade of animals carrying presents', 'a treehouse party', 'a tower of stacked cupcakes', 'bunting strung between two trees']
+const CARD_STYLES = ['bold flat picture-book illustration', 'soft watercolour with loose edges', 'cut-paper collage', 'retro letterpress', 'hand-drawn ink and wash', 'gouache with visible brush marks', 'simple bold vector shapes', 'crayon and coloured-pencil texture', 'linocut in three colours']
+const CARD_SPACE = ['a clean band across the top left empty for the greeting', 'a plain cream banner along the bottom for the message', 'open sky across the top third reserved for lettering', 'a wide empty label in the middle for the name']
+
+/** A shape declares which categories it belongs to; `media()` is supplied by the caller so the
+ *  finish matches what was ticked (a photograph when only Photoreal is on, a painting when it is not). */
+interface Shape { w: number; cats: readonly IdeaCategory[]; make: (media: () => string) => { text: string; key: string } }
+const SCENE: readonly IdeaCategory[] = ['photoreal', 'artwork']
+const IMAGE_SHAPES: readonly Shape[] = [
+  // A person, doing something, somewhere that suits them. The bread and butter.
+  { w: 24, cats: SCENE, make: (media) => { const [who, where] = r(PEOPLE); const p = placeFor(where)
+    const parts = [`${who} ${actionFor(p.inside)}`, p.place, lightFor(p.inside)].filter(Boolean)
+    if (maybe(0.6)) parts.push(r(LENS)); parts.push(media()); if (maybe(0.35)) parts.push(`${r(MOOD)} mood`)
+    return { text: parts.join(', '), key: who } } },
+  // A ready-made vignette, which already has its own action.
+  { w: 12, cats: SCENE, make: (media) => { const [who, where] = r(VIGNETTES); const p = placeFor(where)
+    const parts = [who, p.place, lightFor(p.inside)].filter(Boolean)
+    if (maybe(0.5)) parts.push(r(LENS)); parts.push(media())
+    return { text: parts.join(', '), key: who } } },
+  // Built around a moment happening around them.
+  { w: 9, cats: SCENE, make: (media) => { const [who, where] = r(PEOPLE); const inside = where === 'in' || where === 'self-in'
+    return { text: [`${who} ${actionFor(inside)} as ${r(EVENTS)}`, inside ? r(INDOORS) : r(OUTDOORS), lightFor(inside), media()].join(', '), key: who } } },
+  // Wildlife, in places that suit land, water or air.
+  { w: 12, cats: SCENE, make: (media) => { const [a, habitat] = r(ANIMALS)
+    const parts = [`${a} ${r(actsFor(habitat))}`, r(habitat === 'water' ? WATER_PLACES : WILD), lightFor(false)]
+    if (maybe(0.5)) parts.push(r(LENS)); parts.push(media())
+    return { text: parts.join(', '), key: a } } },
+  // A place, with no one in it.
+  { w: 13, cats: SCENE, make: (media) => { const pl = r(PLACES); const parts = [pl, lightFor(false)]
+    if (maybe(0.6)) parts.push(r(LENS)); parts.push(media()); if (maybe(0.4)) parts.push(`${r(MOOD)} mood`)
+    return { text: parts.join(', '), key: pl } } },
+  // Still life.
+  { w: 8, cats: SCENE, make: (media) => { const o = r(OBJECTS)
+    return { text: [`a still life of ${o}`, r(SURFACES), lightFor(true), media()].join(', '), key: o } } },
+  // Interior, architectural, empty.
+  { w: 6, cats: SCENE, make: (media) => { const x = r(INDOORS)
+    return { text: [`the empty interior of ${x.replace(/^in /, '')}`, lightFor(true), r(LENS), media()].join(', '), key: x } } },
+  // Genre fiction: sci-fi, fantasy, noir, western.
+  { w: 9, cats: SCENE, make: (media) => { const g = r(GENRE_SCENES)
+    return { text: [g, r(LIGHT), maybe(0.6) ? r(RENDER_MEDIA) : media(), `${r(MOOD)} mood`].join(', '), key: g } } },
+  // Deliberate nonsense: the one shape allowed to put the wrong thing in the wrong place.
+  { w: 5, cats: SCENE, make: (media) => { const a = r(ANIMALS)[0]; const b = r(URBAN)
+    return { text: [`${a} ${b}, impossibly out of place`, lightFor(false), media(), `${r(MOOD)} mood`].join(', '), key: a } } },
+  // Period piece.
+  { w: 4, cats: SCENE, make: (media) => { const [who, where] = r(PEOPLE); const e = r(ERA); const p = placeFor(where)
+    return { text: [`${who} in ${e}`, p.place, lightFor(p.inside), media()].filter(Boolean).join(', '), key: e } } },
+  // Pure texture.
+  { w: 4, cats: SCENE, make: (media) => { const a = r(ABSTRACT)
+    return { text: [`an abstract close-up of ${a}`, r(PALETTE), r(LIGHT), media()].join(', '), key: a } } },
+  // Food.
+  { w: 4, cats: SCENE, make: (media) => { const f = r(FOOD)
+    return { text: [f, r(SURFACES), lightFor(true), (maybe(0.7) ? 'overhead flat lay' : r(LENS)), media()].join(', '), key: f } } },
+  // A design brief rather than a scene: always finished as graphic work.
+  { w: 14, cats: ['design'], make: () => { const b = r(POSTER_BRIEFS)
+    return { text: [b, r(PALETTE), r(GRAPHIC_MEDIA)].join(', '), key: b } } },
+  // A greeting card: who it is for, what is on it, and where the words will go.
+  { w: 14, cats: ['cards'], make: () => { const [who, scenes] = r(CARD_FOR)
+    return { text: [`a birthday card for ${who}`, r([...scenes, ...GENERIC_CARD_SCENES]), r(CARD_STYLES), r(PALETTE), r(CARD_SPACE)].join(', '), key: who } } }
+]
+
+/** `categories` narrows both the shapes and the finish; empty or missing means everything. */
+export function imageIdea(categories?: readonly IdeaCategory[]): string {
+  const active = categories && categories.length ? categories : ALL_CATEGORIES
+  const shapes = IMAGE_SHAPES.filter((s) => s.cats.some((c) => active.includes(c)))
+  const pool = shapes.length ? shapes : IMAGE_SHAPES
+  // Photoreal asks for photographs, Artwork for everything hand-made; with both, the whole range.
+  const media: string[] = []
+  if (active.includes('photoreal')) media.push(...PHOTO_MEDIA)
+  if (active.includes('artwork')) media.push(...PAINT_MEDIA, ...DRAWN_MEDIA, ...RENDER_MEDIA)
+  const finish = media.length ? media : ALL_MEDIA
+  return fresh('image', () => weighted(pool.map((s) => [s.w, s] as const)).make(() => r(finish)), (v) => v.key).text
 }
 
 /* ------------------------------------------------------------------- edits */
@@ -339,7 +409,8 @@ export const IDEA_SPACE = {
     + (PLACES.length * LIGHT.length * LENS.length * mediaCount)
     + (OBJECTS.length * SURFACES.length * LIGHT.length * (PHOTO_MEDIA.length + PAINT_MEDIA.length))
     + (GENRE_SCENES.length * LIGHT.length * mediaCount * MOOD.length)
-    + (POSTER_BRIEFS.length * PALETTE.length * GRAPHIC_MEDIA.length),
+    + (POSTER_BRIEFS.length * PALETTE.length * GRAPHIC_MEDIA.length)
+    + (CARD_FOR.reduce((n, [, sc]) => n + sc.length + GENERIC_CARD_SCENES.length, 0) * CARD_STYLES.length * PALETTE.length * CARD_SPACE.length),
   edit: EDIT_OPS.length * 14 * (EDIT_OPS.length * 14),
   music: GENRES.reduce((n, g) => n + (g.bpm[1] - g.bpm[0] + 1) * g.instruments.length * g.moods.length * g.vocals.length, 0)
     * (1 + USE_CASES.length / 4 + (PRODUCTION.length + LIVE_PRODUCTION.length) / 4),

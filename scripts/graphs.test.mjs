@@ -85,7 +85,7 @@ test('style tags always carry the configured bpm and nothing else', () => {
   assert.ok(musicStyleBrief(96).includes("exactly 96 bpm")); assert.ok(!musicStyleBrief(96).includes('NNN'))
 })
 
-const { imageIdea, editIdea, musicIdea, lyricIdea, IDEA_SPACE, USE_CASES, GENRE_BY_NAME, ATMOSPHERIC, BED_FRIENDLY } = await fix('ideas')
+const { imageIdea, editIdea, musicIdea, lyricIdea, IDEA_SPACE, USE_CASES, GENRE_BY_NAME, ATMOSPHERIC, BED_FRIENDLY, IDEA_CATEGORIES, CARD_FOR } = await fix('ideas')
 test('idea space is in the thousands and samples are distinct', () => {
   assert.ok(IDEA_SPACE.image > 100000, 'image ' + IDEA_SPACE.image); assert.ok(IDEA_SPACE.music > 5000, 'music ' + IDEA_SPACE.music); assert.ok(IDEA_SPACE.edit >= 800, 'edit ' + IDEA_SPACE.edit)
   const imgs = new Set(Array.from({ length: 500 }, imageIdea)); assert.ok(imgs.size > 490, `only ${imgs.size} distinct image ideas in 500`)
@@ -167,4 +167,34 @@ test('fused genres share a tempo range, and a bed genre only crosses with one th
     assert.notEqual(parts[1], parts[2], `the same instrument twice in "${m.text}"`)
   }
   assert.ok(fusions > 200, `only ${fusions} fusions in 3000 ideas`)
+})
+
+test('idea categories narrow what the generator offers', () => {
+  const cards = Array.from({ length: 120 }, () => imageIdea(['cards']))
+  for (const c of cards) {
+    assert.match(c, /^a birthday card for /, c)
+    // The scene has to suit the recipient: no cat on the presents for the child who loves horses.
+    const hit = CARD_FOR.find(([who]) => c.startsWith(`a birthday card for ${who},`))
+    assert.ok(hit, `unknown recipient in "${c}"`)
+    const scene = c.slice(`a birthday card for ${hit[0]}, `.length).split(', ')[0]
+    const generic = ['a cake with candles', 'balloons rising over rooftops', 'a parade of animals carrying presents', 'a treehouse party', 'a tower of stacked cupcakes', 'bunting strung between two trees']
+    assert.ok(hit[1].includes(scene) || generic.includes(scene), `"${scene}" does not suit ${hit[0]}`)
+  }
+  assert.ok(new Set(cards).size > 100, `only ${new Set(cards).size} distinct card ideas in 120`)
+
+  const design = Array.from({ length: 80 }, () => imageIdea(['design']))
+  for (const d of design) assert.ok(!d.startsWith('a birthday card'), d)
+
+  // Photoreal must never finish a scene as a painting, and Artwork must never finish one as a photo.
+  const PAINTY = ['oil painting', 'watercolour illustration', 'pencil sketch', 'linocut print', 'anime key visual', 'gouache painting']
+  const PHOTOY = ['cinematic photograph', 'Kodak Portra film look', 'Polaroid snapshot', 'tintype portrait', 'infrared photograph']
+  for (const idea of Array.from({ length: 200 }, () => imageIdea(['photoreal']))) {
+    for (const bad of PAINTY) assert.ok(!idea.includes(bad), `photoreal produced "${bad}": ${idea}`)
+  }
+  for (const idea of Array.from({ length: 200 }, () => imageIdea(['artwork']))) {
+    for (const bad of PHOTOY) assert.ok(!idea.includes(bad), `artwork produced "${bad}": ${idea}`)
+  }
+  // No categories means everything, as before.
+  assert.ok(new Set(Array.from({ length: 300 }, () => imageIdea())).size > 290)
+  assert.equal(IDEA_CATEGORIES.length, 4)
 })

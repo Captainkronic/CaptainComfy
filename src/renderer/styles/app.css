@@ -68,3 +68,12 @@ audio { width: 100%; }
 /* Job settings line */
 .settings { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--fg-muted); }
 .settings b { color: var(--fg); font-weight: 600; }
+
+/* Which kinds of idea "New idea" may offer. Reads as a row of small toggles under the prompt. */
+.ideacats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.ideacats .meta { margin-right: 2px; }
+.ideacats label { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg-dim); font-size: 11.5px; cursor: pointer; user-select: none;
+  /* .field label above sets uppercase + spacing for real field titles; these are chips. */
+  text-transform: none; letter-spacing: normal; margin-bottom: 0; }
+.ideacats label.on { color: var(--fg); border-color: var(--accent-line); background: var(--accent-soft); }
+.ideacats input { width: auto; margin: 0; }

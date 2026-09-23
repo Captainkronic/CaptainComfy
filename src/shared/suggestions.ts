@@ -102,7 +102,7 @@ export const SUGGESTIONS = {
 } as const
 export type SuggestionKind = keyof typeof SUGGESTIONS
 
-import { editIdea, imageIdea, lyricIdea, musicIdea } from './ideas'
+import { editIdea, imageIdea, lyricIdea, musicIdea, type IdeaCategory } from './ideas'
 
 /** Mostly generated (millions of combinations), occasionally one of the hand-written seeds. */
 export function pickStyle(not?: string): { text: string; bpm: number } {
@@ -110,9 +110,13 @@ export function pickStyle(not?: string): { text: string; bpm: number } {
   let m = musicIdea(); if (m.text === not) m = musicIdea(); return m
 }
 
-export function pick(kind: Exclude<SuggestionKind, 'musicStyle'>, not?: string): string {
-  if (Math.random() >= 0.08) {
-    const gen = kind === 'image' ? imageIdea : kind === 'edit' ? editIdea : lyricIdea
+/** `cats` applies to images only: it narrows which kinds of idea the generator may produce. When it
+ *  is set, the hand-written seeds are skipped entirely — they are all photoreal scenes, so mixing
+ *  them in would quietly ignore a request for cards or design work. */
+export function pick(kind: Exclude<SuggestionKind, 'musicStyle'>, not?: string, cats?: readonly IdeaCategory[]): string {
+  const narrowed = kind === 'image' && cats !== undefined && cats.length > 0 && cats.length < 4
+  if (narrowed || Math.random() >= 0.08) {
+    const gen = kind === 'image' ? () => imageIdea(cats) : kind === 'edit' ? editIdea : lyricIdea
     let s = gen(); if (s === not) s = gen(); return s
   }
   const list = SUGGESTIONS[kind] as readonly string[]
