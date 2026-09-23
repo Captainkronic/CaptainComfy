@@ -174,6 +174,15 @@ void app.whenReady().then(async () => {
   })
   win = createWindow()
   jobs.resume()
+  // Headless test hook: CAPTAINCOMFY_TEST_IMAGE=<model> renders one Draft image with that model, waits, logs, quits.
+  const testImage = process.env['CAPTAINCOMFY_TEST_IMAGE']
+  if (testImage) setTimeout(() => { void (async () => {
+    const { IMAGE_MODELS, imageModel } = await import('@shared/models'); const m = imageModel(testImage); const t = IMAGE_MODELS[m].presets.draft
+    const job = jobs.submit('image', { prompt: 'a lighthouse on a rocky cliff at dusk, waves below', enrich: false, model: m, aspect: '3:2', megapixels: t.megapixels, count: 1, steps: t.steps, seed: 11, upscale: t.upscale })
+    await new Promise((r) => setTimeout(r, 3000))
+    while (jobs.list().some((j) => j.id === job.id && (j.status === 'queued' || j.status === 'enriching' || j.status === 'running'))) await new Promise((r) => setTimeout(r, 2000))
+    const j = jobs.list().find((x) => x.id === job.id)!; console.log(`[test-image] ${m}: ${j.status} ${j.progressLabel} ${j.error ?? ''} outputs=${j.outputs.map((o) => o.filename).join(',')} ${Math.round(((j.finishedAt ?? 0) - (j.startedAt ?? 0)) / 1000)} s`); app.quit()
+  })() }, 2500)
   // Headless test hook: CAPTAINCOMFY_TEST_EDIT_SOURCE=sub/file.png edits that ComfyUI result in place, waits, logs, quits.
   const testSource = process.env['CAPTAINCOMFY_TEST_EDIT_SOURCE']
   if (testSource) setTimeout(() => { void (async () => {

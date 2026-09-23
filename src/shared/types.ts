@@ -5,6 +5,8 @@ export type Kind = 'image' | 'edit' | 'music' | 'card'
 export interface ImageParams {
   prompt: string
   enrich: boolean
+  /** One of IMAGE_MODELS in models.ts; absent means Z-Image Turbo. */
+  model?: string
   aspect: AspectKey
   megapixels: number   // 0.5 .. 2.0
   count: number        // 1 .. 4

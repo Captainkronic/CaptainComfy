@@ -7,6 +7,7 @@ import type { EditParams, ImageParams, MusicParams } from './types'
 import type { CardParams } from './card'
 import { CARD_QUALITY, cardQualityKey, cardSize } from './card'
 import { clampSeconds, sizeFor } from './sizing'
+import { IMAGE_MODELS, imageModel, type ImageModel } from './models'
 
 export const MODELS = {
   image: { unet: 'z_image_turbo_bf16.safetensors', clip: 'qwen_3_4b.safetensors', clipType: 'lumina2', vae: 'ae.safetensors' },
@@ -21,18 +22,20 @@ export type ApiGraph = Record<string, { class_type: string; inputs: Record<strin
  *  `upscale` 2 or 4 runs RealESRGAN x4 on the decoded image (tiled by ComfyUI, so it costs little
  *  memory) and, for 2, scales the result back by half with lanczos. Sampling above 1.5 MP is not
  *  survivable on the 36 GB Studio; this is how anything larger gets made. */
-export function zImageGraph(o: { prompt: string; width: number; height: number; batch: number; steps: number; seed: number; prefix: string; upscale?: number }): ApiGraph {
+export function zImageGraph(o: { prompt: string; width: number; height: number; batch: number; steps: number; seed: number; prefix: string; upscale?: number; model?: ImageModel }): ApiGraph {
   const up = o.upscale === 2 || o.upscale === 4 ? o.upscale : 1
+  const m = IMAGE_MODELS[o.model ?? 'zimage']; const r = m.recipe
   const g: ApiGraph = {
-    '1': { class_type: 'UNETLoader', inputs: { unet_name: MODELS.image.unet, weight_dtype: 'default' } },
-    '2': { class_type: 'CLIPLoader', inputs: { clip_name: MODELS.image.clip, type: MODELS.image.clipType, device: 'default' } },
-    '3': { class_type: 'VAELoader', inputs: { vae_name: MODELS.image.vae } },
-    '4': { class_type: 'ModelSamplingAuraFlow', inputs: { model: ['1', 0], shift: 3 } },
+    '1': { class_type: 'UNETLoader', inputs: { unet_name: m.files.unet, weight_dtype: 'default' } },
+    '2': { class_type: 'CLIPLoader', inputs: { clip_name: m.files.clip, type: MODELS.image.clipType, device: 'default' } },
+    '3': { class_type: 'VAELoader', inputs: { vae_name: m.files.vae } },
+    '4': { class_type: 'ModelSamplingAuraFlow', inputs: { model: ['1', 0], shift: r.shift ?? 3 } },
     '5': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: o.prompt } },
-    '6': { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['5', 0] } },
+    // Turbo takes no guidance: an emptied conditioning stands in for the negative. Base-style models get a real one.
+    '6': r.cfg > 1 ? { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: r.negative } } : { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['5', 0] } },
     '7': { class_type: 'EmptySD3LatentImage', inputs: { width: o.width, height: o.height, batch_size: Math.min(4, Math.max(1, o.batch)) } },
     '8': { class_type: 'KSampler', inputs: { model: ['4', 0], positive: ['5', 0], negative: ['6', 0], latent_image: ['7', 0],
-           seed: o.seed, steps: Math.min(12, Math.max(1, o.steps)), cfg: 1, sampler_name: 'res_multistep', scheduler: 'simple', denoise: 1 } },
+           seed: o.seed, steps: Math.min(60, Math.max(1, o.steps)), cfg: r.cfg, sampler_name: r.sampler, scheduler: r.scheduler, denoise: 1 } },
     // Tiled decode: a plain VAEDecode of two 1 MP images (or one 2 MP image) needs more memory than the
     // 36 GB Studio has left beside the resident UNet; ComfyUI then unloads half the UNet to CPU copies
     // and the kernel hits critical pressure (three guard kills on 2026-09-22). Tiles bound the decode.
@@ -48,9 +51,34 @@ export function zImageGraph(o: { prompt: string; width: number; height: number; 
   return g
 }
 
+/** SDXL checkpoint: its own CLIP pair and a separate fp16-fix VAE, a real negative, DPM++ 2M Karras. */
+export function sdxlGraph(o: { prompt: string; width: number; height: number; batch: number; steps: number; seed: number; prefix: string; upscale?: number; model: ImageModel }): ApiGraph {
+  const up = o.upscale === 2 || o.upscale === 4 ? o.upscale : 1
+  const m = IMAGE_MODELS[o.model]; const r = m.recipe
+  const g: ApiGraph = {
+    '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: m.files.ckpt } },
+    '2': { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text: o.prompt } },
+    '3': { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text: r.negative } },
+    '4': { class_type: 'EmptyLatentImage', inputs: { width: o.width, height: o.height, batch_size: Math.min(4, Math.max(1, o.batch)) } },
+    '5': { class_type: 'KSampler', inputs: { model: ['1', 0], positive: ['2', 0], negative: ['3', 0], latent_image: ['4', 0], seed: o.seed, steps: Math.min(60, Math.max(1, o.steps)), cfg: r.cfg, sampler_name: r.sampler, scheduler: r.scheduler, denoise: 1 } },
+    '8': { class_type: 'VAELoader', inputs: { vae_name: m.files.vae } },
+    '9': { class_type: 'VAEDecodeTiled', inputs: { samples: ['5', 0], vae: ['8', 0], tile_size: 512, overlap: 64, temporal_size: 64, temporal_overlap: 8 } },
+    '10': { class_type: 'SaveImage', inputs: { images: ['9', 0], filename_prefix: o.prefix } }
+  }
+  if (up > 1) {
+    g['11'] = { class_type: 'UpscaleModelLoader', inputs: { model_name: MODELS.upscale } }
+    g['12'] = { class_type: 'ImageUpscaleWithModel', inputs: { upscale_model: ['11', 0], image: ['9', 0] } }
+    if (up === 4) g['10']!.inputs['images'] = ['12', 0]
+    else { g['13'] = { class_type: 'ImageScaleBy', inputs: { image: ['12', 0], upscale_method: 'lanczos', scale_by: up / 4 } }; g['10']!.inputs['images'] = ['13', 0] }
+  }
+  return g
+}
+
 export function imageGraph(p: ImageParams, finalPrompt: string, seed: number, prefix = 'lite/image'): ApiGraph {
-  const { width, height } = sizeFor(p.aspect, p.megapixels, 16)
-  return zImageGraph({ prompt: finalPrompt, width, height, batch: p.count, steps: p.steps, seed, prefix, upscale: p.upscale })
+  const model = imageModel(p.model); const m = IMAGE_MODELS[model]
+  const { width, height } = sizeFor(p.aspect, p.megapixels, m.snap)
+  const o = { prompt: finalPrompt, width, height, batch: p.count, steps: p.steps, seed, prefix, upscale: p.upscale, model }
+  return m.kind === 'sdxl' ? sdxlGraph(o) : zImageGraph(o)
 }
 
 /** A greeting card: the tested card sizes, the preset's steps, N candidates as one batch. */
@@ -71,8 +99,8 @@ export function warmupGraph(prompt = 'warm up'): ApiGraph {
 }
 
 /** Which weights a job needs. Consecutive jobs of one family reuse ComfyUI's resident models; a change frees them first. */
-export function modelFamily(kind: 'image' | 'edit' | 'music' | 'card'): 'zimage' | 'klein' | 'ace' {
-  return kind === 'music' ? 'ace' : kind === 'edit' ? 'klein' : 'zimage'
+export function modelFamily(kind: 'image' | 'edit' | 'music' | 'card', model?: string): string {
+  return kind === 'music' ? 'ace' : kind === 'edit' ? 'klein' : kind === 'image' ? IMAGE_MODELS[imageModel(model)].family : 'zimage'
 }
 
 /** The name LoadImage understands for a file in ComfyUI's output or temp folder: "sub/file.png [output]". */
@@ -135,7 +163,7 @@ export function musicGraph(p: MusicParams, style: string, lyrics: string, seed: 
 
 /** Human labels for the nodes we report progress on. Honest: unknown nodes show their class name. */
 export const NODE_LABELS: Record<string, string> = {
-  UNETLoader: 'Loading image model', CLIPLoader: 'Loading text encoder', VAELoader: 'Loading VAE', CheckpointLoaderSimple: 'Loading music model',
+  UNETLoader: 'Loading image model', CLIPLoader: 'Loading text encoder', VAELoader: 'Loading VAE', CheckpointLoaderSimple: 'Loading model', EmptyLatentImage: 'Preparing canvas',
   CLIPTextEncode: 'Encoding prompt', 'TextEncodeAceStepAudio1.5': 'Encoding song', KSampler: 'Generating', VAEDecode: 'Decoding image', VAEDecodeTiled: 'Decoding image',
   VAEDecodeAudio: 'Decoding audio', SaveImage: 'Saving', ImageScaleToTotalPixels: 'Scaling source image', VAEEncode: 'Encoding source image', ReferenceLatent: 'Attaching reference', SamplerCustomAdvanced: 'Generating', GetImageSize: 'Reading size', Flux2Scheduler: 'Scheduling', SaveAudioMP3: 'Saving MP3', EmptySD3LatentImage: 'Preparing canvas', 'EmptyAceStep1.5LatentAudio': 'Preparing', UpscaleModelLoader: 'Loading the upscaler', ImageUpscaleWithModel: 'Upscaling', ImageScaleBy: 'Resizing'
 }

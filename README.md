@@ -106,6 +106,17 @@ mood) and shows it in full, editable, with a word count against the 320-word cei
   and **Edit this prompt** on every finished card do the two moves of the guide's playbook.
 - Print advice: `final.png` at 5x7 in on heavy matte card stock, or a photo service as a 5x7.
 
+## Image models
+
+The Image tab's **Model** toggle (`src/shared/models.ts`) offers what the Studio has: **Z-Image Turbo**
+(the default; 8 steps, no guidance, the one that draws lettering, so cards always use it),
+**Juggernaut Z** (RunDiffusion's fine-tune of Z-Image *Base*: 35 steps at CFG 6 per its model card,
+two model passes per step, measured 380 s warm at 1 MP; beautiful, film-like, slow), and the SDXL
+checkpoints **Juggernaut XI** and **RealVisXL V5** (30 steps at CFG 5, DPM++ 2M Karras, sizes snapped
+to 8, the fp16-fix VAE because Juggernaut XI's own VAE decodes to black in reduced precision;
+Balanced 47 s warm). Each model carries its own quality table, and the job pump treats each as its
+own family, freeing one before loading another. Wan 2.2 (video) and Stable Audio are not image models.
+
 ## What makes generation fast (and what makes it slow)
 
 Measured on the Studio (M4 Max, 36 GB) on 2026-09-22, Z-Image at 880x1232, 8 steps at about

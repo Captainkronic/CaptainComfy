@@ -2,7 +2,8 @@ import type { JSX } from 'react'
 import { useState } from 'react'
 import type { EditParams, ImageParams, Job, Kind, MusicParams, Output } from '@shared/types'
 import { CARD_QUALITY, CARD_SHAPES, cardQualityKey, cardSize, type CardParams, type LetteringReport } from '@shared/card'
-import { EDIT_QUALITY, editQualityOf, IMAGE_QUALITY, imageQualityOf, sizeFor } from '@shared/sizing'
+import { EDIT_QUALITY, editQualityOf, sizeFor } from '@shared/sizing'
+import { IMAGE_MODELS, imageModel, imageQualityOf } from '@shared/models'
 import { useStore } from '../state/store'
 import { call } from '../lib'
 import { isLoopback, liteOutUrl } from '@shared/net'
@@ -12,9 +13,9 @@ import { isLoopback, liteOutUrl } from '@shared/net'
 function settingsOf(job: Job): { preset: string; items: string[] } {
   const items: string[] = []
   if (job.kind === 'image') {
-    const p = job.params as ImageParams; const q = imageQualityOf(p); const size = sizeFor(p.aspect, p.megapixels, 16); const up = p.upscale ?? 1
-    const preset = q ? IMAGE_QUALITY[q].label : `custom: ${p.megapixels} MP, ${p.steps} steps${up > 1 ? `, ${up}x upscale` : ''}`
-    items.push(`${p.aspect} ${size.width}x${size.height}${up > 1 ? ` → ${size.width * up}x${size.height * up}` : ''}`, `${p.steps} steps`)
+    const p = job.params as ImageParams; const m = IMAGE_MODELS[imageModel(p.model)]; const q = imageQualityOf(p); const size = sizeFor(p.aspect, p.megapixels, m.snap); const up = p.upscale ?? 1
+    const preset = `${m.label} · ${q ? m.presets[q].label : `custom: ${p.megapixels} MP, ${p.steps} steps${up > 1 ? `, ${up}x upscale` : ''}`}`
+    items.push(`${p.aspect} ${size.width}x${size.height}${up > 1 ? ` → ${size.width * up}x${size.height * up}` : ''}`, `${p.steps} steps${m.recipe.cfg > 1 ? `, CFG ${m.recipe.cfg}` : ''}`)
     if (p.count > 1) items.push(`${p.count} candidates`)
     items.push(p.enrich ? 'Gemma rewrote the prompt' : 'prompt as written')
     return { preset, items }

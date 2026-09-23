@@ -46,7 +46,7 @@ export class JobManager {
   private aborts = new Map<string, () => void>()
   private current: Job | null = null
   private lastActivity = 0
-  private lastFamily: ReturnType<typeof modelFamily> | null = null
+  private lastFamily: string | null = null
   /** Runs every 10 s from main: restarts an idle pump with queued work, and fails a job that has gone silent. */
   watchdog(): void {
     const stale = this.running && this.current && Date.now() - this.lastActivity > 10 * 60_000
@@ -241,7 +241,7 @@ export class JobManager {
       if ((job.status as JobStatus) === 'cancelled') return  // patch() mutates; TS's narrowing does not see it
       // Consecutive jobs of one model family reuse what ComfyUI has resident (when its node cache is on);
       // switching families frees the old weights first so the new ones never have to fit beside them.
-      const family = modelFamily(job.kind)
+      const family = modelFamily(job.kind, job.kind === 'image' ? (job.params as ImageParams).model : undefined)
       if (this.lastFamily && this.lastFamily !== family) { this.patch(job, { progressLabel: 'Freeing the previous model in ComfyUI' }); await this.d.comfy.free() }
       this.lastFamily = family
       const outputs: Output[] = [...job.outputs]

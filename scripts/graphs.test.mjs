@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const out = mkdtempSync(join(tmpdir(), 'cll-'))
-execFileSync('npx', ['tsc', 'src/shared/types.ts', 'src/shared/sizing.ts', 'src/shared/graphs.ts', 'src/shared/enrich.ts', 'src/shared/net.ts', 'src/shared/ideas.ts', 'src/shared/suggestions.ts', 'src/shared/card.ts', '--outDir', out, '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'es2022', '--skipLibCheck'], { stdio: 'inherit' })
+execFileSync('npx', ['tsc', 'src/shared/types.ts', 'src/shared/sizing.ts', 'src/shared/graphs.ts', 'src/shared/enrich.ts', 'src/shared/net.ts', 'src/shared/ideas.ts', 'src/shared/suggestions.ts', 'src/shared/card.ts', 'src/shared/models.ts', '--outDir', out, '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'es2022', '--skipLibCheck'], { stdio: 'inherit' })
 writeFileSync(join(out, 'package.json'), '{"type":"module"}')
 import { readdirSync, readFileSync } from 'node:fs'
 for (const f of readdirSync(out)) if (f.endsWith('.js')) writeFileSync(join(out, f), readFileSync(join(out, f), 'utf8').replace(/from '(\.\/[a-z]+)'/g, "from '$1.js'"))
@@ -27,10 +27,19 @@ test('upscale tail: RealESRGAN x4 after decode, halved for 2x, straight for 4x',
   const g1 = imageGraph({ prompt: 'x', enrich: false, aspect: '1:1', megapixels: 1, count: 1, steps: 8, seed: null }, 'f', 1)
   assert.equal(g1['11'], undefined); assert.deepEqual(g1['10'].inputs.images, ['9', 0])
 })
+const { IMAGE_MODELS } = await fix('models')
+test('image models: Turbo keeps its recipe, Juggernaut Z gets guidance and a negative, SDXL gets its own graph', () => {
+  const base = { prompt: 'x', enrich: false, aspect: '1:1', megapixels: 1, count: 1, steps: 8, seed: null }
+  const t = imageGraph({ ...base, model: 'zimage' }, 'p', 1); assert.equal(t['1'].inputs.unet_name, 'z_image_turbo_bf16.safetensors'); assert.equal(t['6'].class_type, 'ConditioningZeroOut'); assert.equal(t['8'].inputs.cfg, 1)
+  const j = imageGraph({ ...base, model: 'juggernaut-z', steps: 35 }, 'p', 1); assert.equal(j['1'].inputs.unet_name, 'Juggernaut_Z_V1_by_RunDiffusion.safetensors'); assert.equal(j['6'].class_type, 'CLIPTextEncode'); assert.equal(j['8'].inputs.cfg, 6); assert.equal(j['8'].inputs.steps, 35)
+  const x = imageGraph({ ...base, model: 'realvisxl', steps: 30, upscale: 2 }, 'p', 1); assert.equal(x['1'].class_type, 'CheckpointLoaderSimple'); assert.equal(x['1'].inputs.ckpt_name, 'RealVisXL_V5.0_fp16.safetensors'); assert.equal(x['8'].inputs.vae_name, 'sdxl_vae_fp16_fix.safetensors'); assert.equal(x['5'].inputs.sampler_name, 'dpmpp_2m'); assert.equal(x['4'].inputs.width % 8, 0); assert.deepEqual(x['10'].inputs.images, ['13', 0])
+  assert.equal(imageGraph(base, 'p', 1)['1'].inputs.unet_name, 'z_image_turbo_bf16.safetensors')   // old jobs without a model
+  for (const k of Object.keys(IMAGE_MODELS)) assert.equal(IMAGE_MODELS[k].presets.balanced.megapixels, 1)
+})
 test('image quality presets round-trip and balanced is the recipe', () => {
   assert.equal(IMAGE_QUALITY.balanced.steps, 8); assert.equal(IMAGE_QUALITY.balanced.megapixels, 1)
   for (const k of Object.keys(IMAGE_QUALITY)) assert.equal(imageQualityOf(IMAGE_QUALITY[k]), k)
-  assert.equal(imageQualityOf({ megapixels: 1, steps: 7 }), null); assert.equal(imageQualityOf({ megapixels: 1.5, steps: 8, upscale: 2 }), 'print'); assert.equal(imageQualityOf({ megapixels: 1.5, steps: 8 }), 'high')
+  assert.equal(imageQualityOf({ megapixels: 1, steps: 7 }), null); assert.equal(imageQualityOf({ megapixels: 1.5, steps: 8, upscale: 2 }), 'print'); assert.equal(imageQualityOf({ megapixels: 1.5, steps: 8 }), 'high'); assert.equal(imageQualityOf({ model: 'realvisxl', megapixels: 1, steps: 30 }), 'balanced'); assert.equal(imageQualityOf({ model: 'realvisxl', megapixels: 1, steps: 8 }), null)
   assert.equal(EDIT_QUALITY.balanced.steps, 4); for (const k of Object.keys(EDIT_QUALITY)) assert.equal(editQualityOf(EDIT_QUALITY[k]), k); assert.equal(editQualityOf({ megapixels: 1, steps: 6 }), null)
   const e2 = editGraph({ imagePath: '/x.png', imageName: 'x.png', instruction: 'i', enrich: false, megapixels: 1.5, steps: 4, seed: null, upscale: 2 }, 'i', 1, 'x.png')
   assert.equal(e2['18'].class_type, 'VAEDecodeTiled'); assert.equal(e2['22'].inputs.scale_by, 0.5); assert.deepEqual(e2['19'].inputs.images, ['22', 0])
@@ -124,7 +133,7 @@ test('card graph uses the tested recipe at card size, candidates as one batch', 
   assert.equal(f['8'].inputs.steps, 8); assert.equal(f['7'].inputs.width, 1072)
   const c = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'print', count: 1, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 1)
   assert.equal(c['7'].inputs.width, 1072); assert.equal(c['13'].inputs.scale_by, 0.5); assert.deepEqual(c['10'].inputs.images, ['13', 0])
-  assert.equal(modelFamily('card'), modelFamily('image')); assert.notEqual(modelFamily('card'), modelFamily('music'))
+  assert.equal(modelFamily('card'), modelFamily('image')); assert.notEqual(modelFamily('card'), modelFamily('music')); assert.notEqual(modelFamily('image', 'zimage'), modelFamily('image', 'juggernaut-z')); assert.equal(modelFamily('image', 'realvisxl'), 'sdxl-realvisxl')
   assert.equal(lookForAge(3), 'flat'); assert.equal(lookForAge(8), 'gouache'); assert.equal(lookForAge(40), 'screen'); assert.equal(lookForAge(null), 'riso')
 })
 test('a result is named for LoadImage with its folder annotation', () => {
