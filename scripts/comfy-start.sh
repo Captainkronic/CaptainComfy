@@ -37,8 +37,12 @@ cd "$COMFY_DIR"
 # models stay resident between prompts (a warm Z-Image render takes 54 s instead of 94 s), the app
 # frees them before Gemma loads or the model family changes, and idle-unload.py frees them after
 # 15 idle minutes. Comfy Desktop's launchArgs in installations.json carry the same set.
+# No --bf16-unet / --bf16-vae / --bf16-text-enc either, dropped the same day: they forced bf16 on
+# fp16-native SDXL checkpoints, whose sampler then returned an all-NaN latent for some prompt/seed/
+# size combinations and saved a solid black PNG with no error anywhere. Left alone ComfyUI loads SDXL
+# as float16 and Z-Image as bfloat16 (its weights already are), at the same memory. Do not put back.
 nohup ./.venv/bin/python main.py --enable-manager --reserve-vram 6 \
-  --bf16-unet --bf16-vae --bf16-text-enc --listen "$LISTEN" --port "$PORT" --disable-auto-launch \
+  --listen "$LISTEN" --port "$PORT" --disable-auto-launch \
   --extra-model-paths-config "$YAML" --input-directory "$INPUT" --output-directory "$OUTPUT" >> "$LOG" 2>&1 < /dev/null &
 disown
 for i in $(seq 1 60); do sleep 3; if up; then echo "started in $((i*3)) s"; exit 0; fi; done

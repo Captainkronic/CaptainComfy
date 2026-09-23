@@ -91,9 +91,28 @@ The Image tab's **Model** toggle (`src/shared/models.ts`) offers what the Studio
 **Juggernaut Z** (RunDiffusion's fine-tune of Z-Image *Base*: 35 steps at CFG 6 per its model card,
 two model passes per step, measured 380 s warm at 1 MP; beautiful, film-like, slow), and the SDXL
 checkpoints **Juggernaut XI** and **RealVisXL V5** (30 steps at CFG 5, DPM++ 2M Karras, sizes snapped
-to 8, the fp16-fix VAE because Juggernaut XI's own VAE decodes to black in reduced precision;
-Balanced 47 s warm). Each model carries its own quality table, and the job pump treats each as its
-own family, freeing one before loading another. Wan 2.2 (video) and Stable Audio are not image models.
+to 8, the fp16-fix VAE, Balanced 47 s warm). Each model carries its own quality table, and the job
+pump treats each as its own family, freeing one before loading another. Wan 2.2 (video) and Stable
+Audio are not image models.
+
+### The black SDXL renders, and what they actually were
+
+Both SDXL checkpoints returned solid black images for some prompt/seed/size combinations — no error,
+`Prompt executed` in the log, a 4.5 KB PNG. The first diagnosis (2026-09-22) blamed the VAE and
+switched to the fp16-fix one; that was wrong, and only changed which seeds happened to survive.
+
+Re-running one failing render (`seed 3804137162`, 1224²) through a plain `VAEDecode`, through the
+checkpoint's own VAE and through the tiled decode gave the same black frame every time: **the latent
+was already NaN when it left the sampler.** The cause was `--bf16-unet` in the Studio's launch args,
+added for Z-Image. SDXL checkpoints are fp16-native and their attention needs the mantissa; bf16 has
+7 bits against fp16's 10, so some combinations overflowed to NaN. Nothing else explained it —
+changing sampler, scheduler, CFG, negative prompt or canvas each rescued *some* cases and not others.
+
+Dropping the flag fixed every previously-black case (4 of 4, unchanged prompts and seeds). ComfyUI
+now chooses: `float16` for SDXL, `bfloat16` for Z-Image (whose weights are bf16 already, so the flag
+never bought anything), at identical memory — 4.9 GB for SDXL, 11.7 GB for the Z-Image UNet. The
+flags are gone from `settings.ts`, `~/.local/bin/comfy-start` and Comfy Desktop's `installations.json`
+(backups `*.bak-20260922-bf16`). **A black render means NaN in sampling — look at precision, not the VAE.**
 
 ### What each one costs the Studio
 
@@ -137,8 +156,9 @@ ComfyUI 0.35's default RAM-pressure cache evicts by itself when memory gets tigh
 - **Measured and rejected** on the M4 Max (2026-09-22), so nobody has to try them again:
   `--use-pytorch-cross-attention` (8.4 s/step instead of 6.4, and its full attention matrix pushed
   available RAM under 2 GB, so the memory guard killed ComfyUI; the default sub-quadratic attention
-  is the right one on MPS), `--fp16-unet` (7.4 s/step: bf16 is native here and the weights are
-  bf16), `--fp16-vae` (saves ~1 s of decode, not worth the black-image caveat), `--disable-mmap`
+  is the right one on MPS), `--fp16-unet` (7.4 s/step *on Z-Image*, whose weights are bf16 — these
+  precision timings are per model, which is exactly why no precision flag is forced globally any
+  more; see the black SDXL renders above), `--fp16-vae` (saves ~1 s of decode), `--disable-mmap`
   (53 s to step 1 cold, no better than mmap), `TorchCompileModel` (inductor's Metal backend cannot
   find its own `c10/metal/utils.h` on this torch build), and batching candidates (each image costs
   its full sampling time on MPS; only the load is shared). torch is 2.12.1 already.
@@ -197,10 +217,10 @@ unauthenticated on this host.
 ## How it fits the machine
 
 - Uses the ComfyUI backend on `127.0.0.1:8188` if one is running (Comfy Desktop's, or its own).
-  If nothing answers, the **Start it** banner launches the StudioUi install headlessly with the
-  flags proven on 2026-09-13: `--reserve-vram 6 --cache-none --disable-smart-memory --bf16-unet
-  --bf16-vae --bf16-text-enc`, the Comfy Desktop model-paths YAML, and `~/ComfyUI-Shared` for
-  input/output.
+  If nothing answers, the **Start it** banner launches the StudioUi install headlessly with
+  `--reserve-vram 6` and no precision flags (the cache flags went on 2026-09-22 for speed, the bf16
+  ones the same day for the black SDXL renders above), the Comfy Desktop model-paths YAML, and
+  `~/ComfyUI-Shared` for input/output.
 - Recipes live in `src/shared/graphs.ts` and are the same graphs as the "Easy" templates in ComfyUI.
   Z-Image: res_multistep, cfg 1, shift 3, 8 steps. Klein edit: euler, cfg 1, 4 steps, Flux2Scheduler. ACE-Step: euler, cfg 1, shift 3, 8 steps, one
   duration value driving both encoder and latent. Do not switch the image sampler to `uni_pc` on

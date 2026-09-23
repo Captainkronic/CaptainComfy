@@ -61,9 +61,13 @@ export const IMAGE_MODELS: Record<ImageModel, ImageModelSpec> = {
       high: q(1.0, 45, 1, 'High', '1 MP, 45 steps', 490), ultra: q(1.0, 60, 1, 'Ultra', '1 MP, 60 steps', 650), print: q(1.0, 35, 2, 'Print', '1 MP, 2x upscale', 390)
     }
   },
-  // SDXL checkpoints: 30 steps at CFG 5 with DPM++ 2M Karras, the fp16-fix VAE (Juggernaut XI's own
-  // VAE overflows to a black image in reduced precision), sizes snapped to 8. Seconds measured warm on
-  // RealVisXL; Juggernaut XI is the same architecture.
+  // SDXL checkpoints: 30 steps at CFG 5 with DPM++ 2M Karras, the fp16-fix VAE, sizes snapped to 8.
+  // Seconds measured warm on RealVisXL; Juggernaut XI is the same architecture.
+  // The black images these produced were NOT a VAE fault, as first diagnosed on 2026-09-22: swapping
+  // the VAE only changed which seeds happened to survive. The sampler was returning an all-NaN latent
+  // because ComfyUI had been started with --bf16-unet, and these checkpoints are fp16-native. That
+  // flag is gone (see settings.ts); the fp16-fix VAE stays because it is the right VAE for SDXL in
+  // fp16 anyway, not because it fixes anything.
   // Far the lightest here: one 6.6 GB checkpoint carries the UNet, both CLIPs and a VAE, where the
   // Z-Image family needs an 11.5 GB UNet beside a 7.5 GB text encoder. 12.7 GB at 1 MP and 1.5 MP still
   // left 17 GB free at normal pressure, so these are the models to reach for when the Studio is busy.
