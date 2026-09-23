@@ -168,9 +168,12 @@ ComfyUI 0.35's default RAM-pressure cache evicts by itself when memory gets tigh
 
 ## Image editing
 
-The **Edit** tab takes a source image and an instruction. The image is uploaded to
+The **Edit** tab takes a source image and an instruction. A file you pick is uploaded to
 ComfyUI's input folder at job time under a unique name, so it works identically from the
-Studio and from the MacBook. The graph is ComfyUI's own FLUX.2 Klein 4B distilled edit
+Studio and from the MacBook. **Every result in the Image, Card and Edit tabs has an ✎ Edit
+button** that sends it here instead: ComfyUI reads it in place from its output folder
+(`LoadImage` with a `name [output]` annotation, `annotatedSource` in `src/shared/graphs.ts`),
+nothing is uploaded, and the edited image gets its own ✎ Edit button, so edits chain. The graph is ComfyUI's own FLUX.2 Klein 4B distilled edit
 recipe (reference latent on positive and zeroed negative, cfg 1, euler, 4 steps, canvas
 sized from the scaled source) and matches the "Easy Image to Image" template in ComfyUI.
 Gemma's `image_edit` brief rewrites the request into a precise instruction that preserves

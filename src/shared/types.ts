@@ -15,8 +15,10 @@ export interface ImageParams {
 }
 
 export interface EditParams {
-  imagePath: string     // local file on the machine running the app; uploaded to ComfyUI at job time
+  imagePath: string     // local file on the machine running the app; uploaded to ComfyUI at job time ('' with `source`)
   imageName: string     // display name
+  /** Edit a result ComfyUI already holds: LoadImage reads it from the output folder, nothing is uploaded. */
+  source?: { subfolder: string; filename: string; type: 'output' | 'temp' }
   instruction: string
   enrich: boolean
   megapixels: number    // canvas size for the edit, 0.5 .. 2.0
@@ -63,8 +65,8 @@ export interface Job {
   status: JobStatus
   params: ImageParams | EditParams | MusicParams | CardParams
   enriched?: { prompt?: string; style?: string; lyrics?: string }
-  /** For edit jobs: what ComfyUI stored the uploaded source as. */
-  uploaded?: { name: string; subfolder: string }
+  /** For edit jobs: what ComfyUI stored the uploaded source as, or the result it was told to read ('output'). */
+  uploaded?: { name: string; subfolder: string; type?: 'input' | 'output' | 'temp' }
   /** The seed actually used (params.seed when set, otherwise the random one drawn at run time). */
   seed?: number
   /** For card jobs: one OCR report per output, in output order, once the lettering has been read. */

@@ -74,6 +74,12 @@ function CardActions({ job }: { job: Job }): JSX.Element {
   )
 }
 
+/** Send a result to the Edit tab: the form loads it, you describe the change, the Klein edit runs on it. */
+function EditButton({ o }: { o: Output }): JSX.Element {
+  const setEditSource = useStore((s) => s.setEditSource); const setTab = useStore((s) => s.setTab)
+  return <button className="btn ghost" title="Edit this image with a new instruction" onClick={() => { setEditSource(o); setTab('edit') }}>✎ Edit</button>
+}
+
 function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; local: boolean }): JSX.Element {
   const live = job.status === 'queued' || job.status === 'enriching' || job.status === 'running'
   const params = job.params
@@ -103,7 +109,7 @@ function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; l
       {job.error && <div className="err">{job.error}</div>}
       {job.kind === 'edit' && job.uploaded && (
         <div className="grid two">
-          <figure><img src={liteOutUrl(job.uploaded.subfolder, job.uploaded.name, 'input')} alt="" onClick={() => onZoom({ filename: job.uploaded!.name, subfolder: job.uploaded!.subfolder, type: 'output', url: liteOutUrl(job.uploaded!.subfolder, job.uploaded!.name, 'input'), viewUrl: '' })} /><figcaption>Before</figcaption></figure>
+          <figure><img src={liteOutUrl(job.uploaded.subfolder, job.uploaded.name, job.uploaded.type ?? 'input')} alt="" onClick={() => onZoom({ filename: job.uploaded!.name, subfolder: job.uploaded!.subfolder, type: 'output', url: liteOutUrl(job.uploaded!.subfolder, job.uploaded!.name, job.uploaded!.type ?? 'input'), viewUrl: '' })} /><figcaption>Before</figcaption></figure>
           {job.outputs[0]
             ? <figure><img src={job.outputs[0].url} alt="" onClick={() => onZoom(job.outputs[0]!)} /><figcaption>After</figcaption></figure>
             : <figure><div className="pending">{live ? 'Editing…' : 'No result'}</div><figcaption>After</figcaption></figure>}
@@ -130,6 +136,7 @@ function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; l
           {job.outputs.map((o) => (
             <span key={o.url}>
               <button className="btn ghost" onClick={() => { void call('output:save', o) }}>⬇ Download {o.filename}</button>
+              {job.kind !== 'music' && <EditButton o={o} />}
               {local && <button className="btn ghost" onClick={() => { void call('shell:reveal', o) }}>Show in Finder</button>}
             </span>
           ))}

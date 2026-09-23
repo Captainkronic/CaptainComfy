@@ -75,6 +75,11 @@ export function modelFamily(kind: 'image' | 'edit' | 'music' | 'card'): 'zimage'
   return kind === 'music' ? 'ace' : kind === 'edit' ? 'klein' : 'zimage'
 }
 
+/** The name LoadImage understands for a file in ComfyUI's output or temp folder: "sub/file.png [output]". */
+export function annotatedSource(o: { subfolder: string; filename: string; type: 'output' | 'temp' }): string {
+  return `${[o.subfolder, o.filename].filter(Boolean).join('/')} [${o.type}]`
+}
+
 /** Instruction edit with FLUX.2 Klein 4B (distilled): reference latent on both positive and zeroed
  *  negative, cfg 1, euler, Flux2Scheduler sized from the scaled source image. Same wiring as
  *  ComfyUI's bundled image_flux2_klein_image_edit_4b_distilled template. */

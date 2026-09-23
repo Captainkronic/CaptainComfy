@@ -84,7 +84,7 @@ test('music ideas carry a tempo that fits their genre', () => {
 })
 
 const { cardSize, cardPrompt, cardQualityKey, draftToParams, defaultDraft, expectedLettering, checkLettering, letterDifferences, foldLookalikes, lookForAge, wordCount } = await fix('card')
-const { cardGraph, modelFamily, warmupGraph } = await fix('graphs')
+const { cardGraph, modelFamily, warmupGraph, annotatedSource } = await fix('graphs')
 const line = (text, y = 0.05, conf = 1) => ({ text, confidence: conf, x: 0.2, y, w: 0.6, h: 0.06 })
 
 test('card sizes equal the presets tested in Card-Generator', () => {
@@ -121,6 +121,12 @@ test('card graph uses the tested recipe at card size, candidates as one batch', 
   assert.equal(c['7'].inputs.width, 1072); assert.equal(c['13'].inputs.scale_by, 0.5); assert.deepEqual(c['10'].inputs.images, ['13', 0])
   assert.equal(modelFamily('card'), modelFamily('image')); assert.notEqual(modelFamily('card'), modelFamily('music'))
   assert.equal(lookForAge(3), 'flat'); assert.equal(lookForAge(8), 'gouache'); assert.equal(lookForAge(40), 'screen'); assert.equal(lookForAge(null), 'riso')
+})
+test('a result is named for LoadImage with its folder annotation', () => {
+  assert.equal(annotatedSource({ subfolder: 'lite', filename: 'image_00066_.png', type: 'output' }), 'lite/image_00066_.png [output]')
+  assert.equal(annotatedSource({ subfolder: '', filename: 'x.png', type: 'temp' }), 'x.png [temp]')
+  const g = editGraph({ imagePath: '', imageName: 'x', instruction: 'i', enrich: false, megapixels: 1, steps: 4, seed: null, source: { subfolder: 'lite', filename: 'x.png', type: 'output' } }, 'i', 1, annotatedSource({ subfolder: 'lite', filename: 'x.png', type: 'output' }))
+  assert.equal(g['4'].inputs.image, 'lite/x.png [output]')
 })
 test('warm-up graph loads the same weights, tiny, and keeps its output out of the output folder', () => {
   const w = warmupGraph(), g = cardGraph({ prompt: 'p', expect: [], title: 't', shape: 'portrait', quality: 'balanced', count: 1, seed: null, verify: true, attempts: 3, attempt: 1, series: 's' }, 1)

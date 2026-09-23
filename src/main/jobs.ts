@@ -6,7 +6,7 @@
 import { powerSaveBlocker } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { cardGraph, editGraph, imageGraph, modelFamily, musicGraph, NODE_LABELS, warmupGraph, type ApiGraph } from '@shared/graphs'
+import { annotatedSource, cardGraph, editGraph, imageGraph, modelFamily, musicGraph, NODE_LABELS, warmupGraph, type ApiGraph } from '@shared/graphs'
 import { randomSeed } from '@shared/sizing'
 import type { EditParams, ImageParams, Job, JobStatus, Kind, MusicParams, Output } from '@shared/types'
 import { checkLettering, type CardParams, type LetteringReport } from '@shared/card'
@@ -192,9 +192,17 @@ export class JobManager {
         build = (i) => imageGraph({ ...pp, count: 1 }, prompt, seed + i)
       } else if (job.kind === 'edit') {
         const p = job.params as EditParams
-        this.patch(job, { status: 'enriching', progressLabel: 'Uploading source image to ComfyUI', startedAt: Date.now() })
-        const up = await this.d.comfy.uploadImage(p.imagePath)
-        this.patch(job, { uploaded: up })
+        let loadName: string
+        if (p.source) {
+          // A result ComfyUI already holds: read it in place, no upload.
+          loadName = annotatedSource(p.source)
+          this.patch(job, { status: 'enriching', uploaded: { name: p.source.filename, subfolder: p.source.subfolder, type: p.source.type }, progressLabel: 'Editing a result in place', startedAt: Date.now() })
+        } else {
+          this.patch(job, { status: 'enriching', progressLabel: 'Uploading source image to ComfyUI', startedAt: Date.now() })
+          const up = await this.d.comfy.uploadImage(p.imagePath)
+          this.patch(job, { uploaded: { ...up, type: 'input' } })
+          loadName = up.subfolder ? `${up.subfolder}/${up.name}` : up.name
+        }
         let instruction = job.enriched?.prompt ?? p.instruction
         if (p.enrich && !job.enriched?.prompt) {
           this.patch(job, { progressLabel: 'Loading Gemma' })
@@ -204,7 +212,7 @@ export class JobManager {
           this.patch(job, { enriched: { prompt: r.used ? r.text : undefined }, progressLabel: r.detail })
         }
         if ((job.status as JobStatus) === 'cancelled') return
-        const g = editGraph(p, instruction, seed, up.subfolder ? `${up.subfolder}/${up.name}` : up.name)
+        const g = editGraph(p, instruction, seed, loadName)
         build = () => g
       } else {
         const p = job.params as MusicParams

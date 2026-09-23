@@ -174,6 +174,15 @@ void app.whenReady().then(async () => {
   })
   win = createWindow()
   jobs.resume()
+  // Headless test hook: CAPTAINCOMFY_TEST_EDIT_SOURCE=sub/file.png edits that ComfyUI result in place, waits, logs, quits.
+  const testSource = process.env['CAPTAINCOMFY_TEST_EDIT_SOURCE']
+  if (testSource) setTimeout(() => { void (async () => {
+    const i = testSource.lastIndexOf('/'); const subfolder = i >= 0 ? testSource.slice(0, i) : ''; const filename = testSource.slice(i + 1)
+    const job = jobs.submit('edit', { imagePath: '', imageName: filename, source: { subfolder, filename, type: 'output' }, instruction: process.env['CAPTAINCOMFY_TEST_INSTRUCTION'] ?? 'make it a snowy winter evening', enrich: false, megapixels: 1, steps: 4, seed: 7 })
+    await new Promise((r) => setTimeout(r, 3000))
+    while (jobs.list().some((j) => j.id === job.id && (j.status === 'queued' || j.status === 'enriching' || j.status === 'running'))) await new Promise((r) => setTimeout(r, 2000))
+    const j = jobs.list().find((x) => x.id === job.id)!; console.log(`[test-edit] ${j.status} ${j.progressLabel} ${j.error ?? ''} outputs=${j.outputs.map((o) => o.filename).join(',')} before=${JSON.stringify(j.uploaded)}`); app.quit()
+  })() }, 2500)
   // Headless test hook: CAPTAINCOMFY_TEST_EDIT=/path/to.png submits one edit job at startup.
   const testEdit = process.env['CAPTAINCOMFY_TEST_EDIT']
   if (testEdit) setTimeout(() => { jobs.submit('edit', { imagePath: testEdit, imageName: testEdit.split('/').pop() ?? testEdit, instruction: process.env['CAPTAINCOMFY_TEST_INSTRUCTION'] ?? 'make it a rainy evening', enrich: true, megapixels: 1, steps: 4, seed: 7 }) }, 3000)
@@ -198,7 +207,7 @@ void app.whenReady().then(async () => {
   })() }, 2000)
   // Headless UI check: CAPTAINCOMFY_SHOT=/path.png [CAPTAINCOMFY_TAB=card] captures the window after 4 s and quits.
   const shot = process.env['CAPTAINCOMFY_SHOT']
-  if (shot) setTimeout(() => { void (async () => { try { const tab = process.env['CAPTAINCOMFY_TAB']; if (tab) { await win?.webContents.executeJavaScript(`document.querySelector('.tab[data-tab="${tab}"]')?.click()`) } await new Promise((r) => setTimeout(r, Number(process.env['CAPTAINCOMFY_SHOT_DELAY'] ?? 800))); const img = await win?.webContents.capturePage(); if (img) writeFileSync(shot, img.toPNG()); console.log(`[shot] wrote ${shot}`) } catch (e) { console.log('[shot] failed ' + String(e)) } app.quit() })() }, 3500)
+  if (shot) setTimeout(() => { void (async () => { try { const tab = process.env['CAPTAINCOMFY_TAB']; if (tab) { await win?.webContents.executeJavaScript(`document.querySelector('.tab[data-tab="${tab}"]')?.click()`) }; const click = process.env['CAPTAINCOMFY_CLICK']; if (click) { await new Promise((r) => setTimeout(r, 600)); await win?.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(click)})?.click()`) } await new Promise((r) => setTimeout(r, Number(process.env['CAPTAINCOMFY_SHOT_DELAY'] ?? 800))); const img = await win?.webContents.capturePage(); if (img) writeFileSync(shot, img.toPNG()); console.log(`[shot] wrote ${shot}`) } catch (e) { console.log('[shot] failed ' + String(e)) } app.quit() })() }, 3500)
   if (process.env['LITE_PROBE']) setTimeout(() => { void win?.webContents.executeJavaScript("(() => { const imgs=[...document.querySelectorAll('.grid img')]; return JSON.stringify({ cards: document.querySelectorAll('.card').length, grids: document.querySelectorAll('.grid').length, imgs: imgs.map(i => ({ src: i.src.slice(0, 80), complete: i.complete, w: i.naturalWidth, h: i.naturalHeight, box: i.getBoundingClientRect().width + 'x' + i.getBoundingClientRect().height })) }) })()").then((r) => console.log('[probe] ' + String(r))).catch((e) => console.log('[probe] failed ' + String(e))) }, 6000)
   // Self-repair: ComfyUI down for two health checks in a row is started again (the Start button's path;
   // comfy-start removes duplicates and waits for memory to settle), at most once every three minutes.
