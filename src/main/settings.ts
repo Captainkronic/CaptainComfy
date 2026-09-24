@@ -6,7 +6,7 @@ import type { Settings } from '@shared/ipc'
 const HOME = homedir()
 export const DEFAULTS: Settings = {
   comfyHost: process.env['COMFY_HOST'] ?? 'http://127.0.0.1:8188',
-  comfyDir: process.env['COMFY_DIR'] ?? '/Volumes/StudioExtend/ComfyExtend/StudioUi/ComfyUI',
+  comfyDir: process.env['COMFY_DIR'] ?? '/Volumes/StudioTwo/ComfyExtend/StudioUi/ComfyUI',
   comfyModelPathsYaml: join(HOME, 'Library/Application Support/Comfy Desktop/instance-model-paths/inst-1786875206899.yaml'),
   comfyInputDir: join(HOME, 'ComfyUI-Shared/input'),
   comfyOutputDir: join(HOME, 'ComfyUI-Shared/output'),
