@@ -109,6 +109,11 @@ function Card({ job, onZoom, local }: { job: Job; onZoom: (o: Output) => void; l
       </div>
       <Settings job={job} />
       {job.kind === 'image' && <details className="prompt-preview"><summary>Prompt as typed</summary><div className="enriched">{(params as ImageParams).prompt}</div></details>}
+      {job.kind === 'image' && IMAGE_MODELS[imageModel((params as ImageParams).model)].recipe.cfg > 1 && (
+        <details className="prompt-preview"><summary>Negative prompt</summary>
+          <div className="enriched">{(params as ImageParams).negative?.trim() || `${IMAGE_MODELS[imageModel((params as ImageParams).model)].recipe.negative}  (model default)`}</div>
+        </details>
+      )}
       {live && (
         <>
           <div className={`bar ${job.progress === null ? 'indeterminate' : ''}`}><i style={job.progress === null ? undefined : { width: `${Math.round(job.progress * 100)}%` }} /></div>

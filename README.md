@@ -157,6 +157,19 @@ never bought anything), at identical memory — 4.9 GB for SDXL, 11.7 GB for the
 flags are gone from `settings.ts`, `~/.local/bin/comfy-start` and Comfy Desktop's `installations.json`
 (backups `*.bak-20260922-bf16`). **A black render means NaN in sampling — look at precision, not the VAE.**
 
+### Negative prompts
+
+The Image tab has a **Negative prompt** box under the prompt. Left empty it uses the model's own
+default (`blurry, low quality, watermark, text, deformed, extra limbs`), shown as grey placeholder
+text; anything typed replaces it. The job card records which was used.
+
+It only does anything on a model that runs a guidance pass. **Z-Image Turbo is distilled for CFG 1**,
+where the negative conditioning is a `ConditioningZeroOut` and has no influence at all, so the box is
+shown disabled with that explanation rather than hidden — a field that silently does nothing looks
+like a bug. Juggernaut Z (CFG 6) and the three SDXL checkpoints (CFG 5) all use it. A test asserts
+the text reaches node 3 of the SDXL graph and node 6 of the Z-Image one, and that it never appears
+anywhere in a Turbo graph.
+
 ### What each one costs the Studio
 
 Measured 2026-09-22 on the 36 GB Studio: free RAM at idle minus the floor during a render, at 1 MP.

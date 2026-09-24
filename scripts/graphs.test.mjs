@@ -198,3 +198,23 @@ test('idea categories narrow what the generator offers', () => {
   assert.ok(new Set(Array.from({ length: 300 }, () => imageIdea())).size > 290)
   assert.equal(IDEA_CATEGORIES.length, 4)
 })
+
+test('a negative prompt reaches the models that can use one, and is ignored by Turbo', () => {
+  const base = { prompt: 'x', enrich: false, aspect: '1:1', megapixels: 1, count: 1, steps: 30, seed: null }
+  const MINE = 'no people, no text, no watermark'
+  // SDXL: node 3 is the negative encode.
+  const xl = imageGraph({ ...base, model: 'juggernaut-xi', negative: MINE }, 'p', 1)
+  assert.equal(xl['3'].inputs.text, MINE)
+  // Juggernaut Z runs guidance too, through the Z-Image graph's node 6.
+  const jz = imageGraph({ ...base, model: 'juggernaut-z', negative: MINE }, 'p', 1)
+  assert.equal(jz['6'].class_type, 'CLIPTextEncode'); assert.equal(jz['6'].inputs.text, MINE)
+  // Empty or whitespace falls back to the model's own default rather than sending nothing.
+  for (const empty of [undefined, '', '   ']) {
+    const g = imageGraph({ ...base, model: 'realvisxl', negative: empty }, 'p', 1)
+    assert.equal(g['3'].inputs.text, IMAGE_MODELS['realvisxl'].recipe.negative)
+  }
+  // Turbo has no guidance pass: the negative slot stays a zeroed conditioning whatever is typed.
+  const t = imageGraph({ ...base, model: 'zimage', steps: 8, negative: MINE }, 'p', 1)
+  assert.equal(t['6'].class_type, 'ConditioningZeroOut')
+  assert.equal(JSON.stringify(t).includes(MINE), false, 'Turbo must not carry the negative text')
+})

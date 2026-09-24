@@ -20,9 +20,10 @@ export type ApiGraph = Record<string, { class_type: string; inputs: Record<strin
  *  `upscale` 2 or 4 runs RealESRGAN x4 on the decoded image (tiled by ComfyUI, so it costs little
  *  memory) and, for 2, scales the result back by half with lanczos. Sampling above 1.5 MP is not
  *  survivable on the 36 GB Studio; this is how anything larger gets made. */
-export function zImageGraph(o: { prompt: string; width: number; height: number; batch: number; steps: number; seed: number; prefix: string; upscale?: number; model?: ImageModel }): ApiGraph {
+export function zImageGraph(o: { prompt: string; width: number; height: number; batch: number; steps: number; seed: number; prefix: string; upscale?: number; model?: ImageModel; negative?: string }): ApiGraph {
   const up = o.upscale === 2 || o.upscale === 4 ? o.upscale : 1
   const m = IMAGE_MODELS[o.model ?? 'zimage']; const r = m.recipe
+  const negative = o.negative?.trim() || r.negative
   const g: ApiGraph = {
     '1': { class_type: 'UNETLoader', inputs: { unet_name: m.files.unet, weight_dtype: 'default' } },
     '2': { class_type: 'CLIPLoader', inputs: { clip_name: m.files.clip, type: MODELS.image.clipType, device: 'default' } },
@@ -30,7 +31,7 @@ export function zImageGraph(o: { prompt: string; width: number; height: number; 
     '4': { class_type: 'ModelSamplingAuraFlow', inputs: { model: ['1', 0], shift: r.shift ?? 3 } },
     '5': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: o.prompt } },
     // Turbo takes no guidance: an emptied conditioning stands in for the negative. Base-style models get a real one.
-    '6': r.cfg > 1 ? { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: r.negative } } : { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['5', 0] } },
+    '6': r.cfg > 1 ? { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: negative } } : { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['5', 0] } },
     '7': { class_type: 'EmptySD3LatentImage', inputs: { width: o.width, height: o.height, batch_size: Math.min(4, Math.max(1, o.batch)) } },
     '8': { class_type: 'KSampler', inputs: { model: ['4', 0], positive: ['5', 0], negative: ['6', 0], latent_image: ['7', 0],
            seed: o.seed, steps: Math.min(60, Math.max(1, o.steps)), cfg: r.cfg, sampler_name: r.sampler, scheduler: r.scheduler, denoise: 1 } },
@@ -50,13 +51,14 @@ export function zImageGraph(o: { prompt: string; width: number; height: number; 
 }
 
 /** SDXL checkpoint: its own CLIP pair and a separate fp16-fix VAE, a real negative, DPM++ 2M Karras. */
-export function sdxlGraph(o: { prompt: string; width: number; height: number; batch: number; steps: number; seed: number; prefix: string; upscale?: number; model: ImageModel }): ApiGraph {
+export function sdxlGraph(o: { prompt: string; width: number; height: number; batch: number; steps: number; seed: number; prefix: string; upscale?: number; model: ImageModel; negative?: string }): ApiGraph {
   const up = o.upscale === 2 || o.upscale === 4 ? o.upscale : 1
   const m = IMAGE_MODELS[o.model]; const r = m.recipe
+  const negative = o.negative?.trim() || r.negative
   const g: ApiGraph = {
     '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: m.files.ckpt } },
     '2': { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text: o.prompt } },
-    '3': { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text: r.negative } },
+    '3': { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text: negative } },
     '4': { class_type: 'EmptyLatentImage', inputs: { width: o.width, height: o.height, batch_size: Math.min(4, Math.max(1, o.batch)) } },
     '5': { class_type: 'KSampler', inputs: { model: ['1', 0], positive: ['2', 0], negative: ['3', 0], latent_image: ['4', 0], seed: o.seed, steps: Math.min(60, Math.max(1, o.steps)), cfg: r.cfg, sampler_name: r.sampler, scheduler: r.scheduler, denoise: 1 } },
     '8': { class_type: 'VAELoader', inputs: { vae_name: m.files.vae } },
@@ -75,7 +77,7 @@ export function sdxlGraph(o: { prompt: string; width: number; height: number; ba
 export function imageGraph(p: ImageParams, finalPrompt: string, seed: number, prefix = 'lite/image'): ApiGraph {
   const model = imageModel(p.model); const m = IMAGE_MODELS[model]
   const { width, height } = sizeFor(p.aspect, p.megapixels, m.snap)
-  const o = { prompt: finalPrompt, width, height, batch: p.count, steps: p.steps, seed, prefix, upscale: p.upscale, model }
+  const o = { prompt: finalPrompt, width, height, batch: p.count, steps: p.steps, seed, prefix, upscale: p.upscale, model, negative: p.negative }
   return m.kind === 'sdxl' ? sdxlGraph(o) : zImageGraph(o)
 }
 

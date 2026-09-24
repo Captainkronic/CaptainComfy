@@ -52,7 +52,7 @@ function IdeaTypes({ cats, onToggle }: { cats: IdeaCategory[]; onToggle: (k: Ide
 export default function ImageForm(): JSX.Element {
   const r0 = remembered(); const q0 = IMAGE_MODELS[r0.model].presets[r0.quality]
   // The opening idea honours the remembered categories too, or the form contradicts its own toggles.
-  const [p, setP] = useState<ImageParams>({ prompt: pick('image', undefined, rememberedCats()), enrich: true, model: r0.model, aspect: '1:1', megapixels: q0.megapixels, count: 1, steps: q0.steps, seed: null, upscale: q0.upscale })
+  const [p, setP] = useState<ImageParams>({ prompt: pick('image', undefined, rememberedCats()), enrich: true, model: r0.model, aspect: '1:1', megapixels: q0.megapixels, count: 1, steps: q0.steps, seed: null, upscale: q0.upscale, negative: '' })
   const [busy, setBusy] = useState(false)
   const [cats, setCats] = useState<IdeaCategory[]>(rememberedCats)
   // Unticking the last category would leave New idea nothing to draw on, so the last one stays put.
@@ -82,6 +82,15 @@ export default function ImageForm(): JSX.Element {
         </div>
         <textarea value={p.prompt} onChange={(e) => up('prompt', e.target.value)} placeholder="a woman with curly hair at a sunny harbor, pastel houses behind" />
         <div className="hint">{p.enrich ? 'A short idea is enough. Gemma adds setting, light, lens and style before rendering.' : 'Used exactly as written.'}</div>
+      </div>
+      {/* A negative only exists where there is a guidance pass to apply it to. Turbo is distilled for
+          CFG 1, so the field is shown disabled rather than hidden: otherwise it looks like a bug. */}
+      <div className="field"><label>Negative prompt</label>
+        <textarea className="short" value={p.negative ?? ''} disabled={spec.recipe.cfg <= 1}
+          onChange={(e) => up('negative', e.target.value)} placeholder={spec.recipe.cfg > 1 ? spec.recipe.negative : ''} />
+        <div className="hint">{spec.recipe.cfg > 1
+          ? <>What to steer away from. Empty uses {spec.label}&rsquo;s default, shown in grey.</>
+          : <>{spec.label} renders without a guidance pass (CFG 1), so a negative prompt has no effect on it. Pick another model to use one.</>}</div>
       </div>
       <label className="toggle"><input type="checkbox" checked={p.enrich} onChange={(e) => up('enrich', e.target.checked)} /> Enrich with Gemma</label>
       <div className="field"><label>Model</label>
