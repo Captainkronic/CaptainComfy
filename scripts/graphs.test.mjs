@@ -15,7 +15,7 @@ const { sizeFor, clampSeconds, IMAGE_QUALITY, imageQualityOf, EDIT_QUALITY, edit
 const { imageGraph, musicGraph, editGraph } = await fix('graphs')
 const { safeResultName } = await fix('net')
 const { IMAGE_MODELS } = await fix('models')
-const { lyricsAreFinal, cleanLLMText, normalizeStyleTags, musicStyleBrief } = await fix('enrich')
+const { lyricsAreFinal, cleanLLMText, normalizeStyleTags, musicStyleBrief, detectCraft, IMAGE_BRIEFS } = await fix('enrich')
 
 test('sizeFor snaps to 16 and honours aspect', () => {
   const s = sizeFor('1:1', 1.0); assert.equal(s.width, 1008); assert.equal(s.height, 1008)
@@ -217,4 +217,32 @@ test('a negative prompt reaches the models that can use one, and is ignored by T
   const t = imageGraph({ ...base, model: 'zimage', steps: 8, negative: MINE }, 'p', 1)
   assert.equal(t['6'].class_type, 'ConditioningZeroOut')
   assert.equal(JSON.stringify(t).includes(MINE), false, 'Turbo must not carry the negative text')
+})
+
+test('the enrichment brief matches the trade the prompt is asking for', () => {
+  // The artefact wins over the medium: a poster painted in watercolour is still a design job.
+  assert.equal(detectCraft('a birthday card for a 4-year-old who loves dinosaurs, cut-paper collage'), 'design')
+  assert.equal(detectCraft('a book cover for a novel about a lighthouse, oil painting'), 'design')
+  assert.equal(detectCraft('a poster for a night bus service'), 'design')
+  assert.equal(detectCraft('a fox in a snowy birch forest, oil painting'), 'art')
+  assert.equal(detectCraft('an abstract close-up of cracked dry earth, linocut print'), 'art')
+  assert.equal(detectCraft('a lighthouse on a headland, golden hour light, Kodak Portra film look'), 'photo')
+  assert.equal(detectCraft('a barista laughing, 85mm portrait, shallow depth of field'), 'photo')
+  assert.equal(detectCraft(''), 'photo')
+
+  // Each brief has to carry its own trade's vocabulary, and not the others'.
+  assert.match(IMAGE_BRIEFS.photo, /focal length/i); assert.match(IMAGE_BRIEFS.photo, /aperture/i)
+  assert.match(IMAGE_BRIEFS.photo, /Rembrandt/); assert.match(IMAGE_BRIEFS.photo, /key-to-fill/i)
+  assert.match(IMAGE_BRIEFS.art, /pigment pooling/i); assert.match(IMAGE_BRIEFS.art, /carving marks/i)
+  assert.ok(!/aperture/i.test(IMAGE_BRIEFS.art), 'the illustrator brief must not talk about aperture')
+  assert.match(IMAGE_BRIEFS.design, /negative space/i); assert.match(IMAGE_BRIEFS.design, /proportions/i)
+  assert.ok(!/focal length/i.test(IMAGE_BRIEFS.design), 'the design brief must not talk about focal length')
+
+  // The banned phrases are the tell of an amateur prompt; every brief forbids them.
+  for (const [name, brief] of Object.entries(IMAGE_BRIEFS)) {
+    for (const junk of ['masterpiece', '4k', 'ultra detailed', 'trending on artstation', 'HDR']) {
+      assert.ok(brief.includes(junk), `${name} brief should forbid "${junk}"`)
+    }
+    assert.match(brief, /Reply with the prompt only/)
+  }
 })

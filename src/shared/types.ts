@@ -12,6 +12,8 @@ export interface ImageParams {
   seed: number | null  // null = random
   /** 1 (none), 2 or 4: RealESRGAN x4 after decoding, scaled to the factor. Absent means 1. */
   upscale?: number
+  /** Which trade Gemma writes as when Enrich is on: 'auto' reads it off the prompt. */
+  craft?: 'auto' | 'photo' | 'art' | 'design'
   /** What to steer away from. Empty or absent uses the model's own default. Only models that run a
    *  guidance pass (CFG above 1) can use it at all; Z-Image Turbo is distilled for CFG 1 and ignores it. */
   negative?: string

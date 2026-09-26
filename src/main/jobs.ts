@@ -13,7 +13,7 @@ import type { EditParams, ImageParams, Job, JobStatus, Kind, MusicParams, Output
 import type { ComfyClient, ComfyEvent } from './comfy'
 import { liteOutUrl } from '@shared/net'
 import { enrich, gemmaLoaded, gemmaResident, loadModel, unloadModel } from './enrich'
-import { musicStyleBrief, normalizeStyleTags } from '@shared/enrich'
+import { detectCraft, IMAGE_BRIEFS, musicStyleBrief, normalizeStyleTags } from '@shared/enrich'
 
 export interface JobDeps {
   comfy: ComfyClient
@@ -182,7 +182,9 @@ export class JobManager {
           this.patch(job, { status: 'enriching', progressLabel: 'Loading Gemma', startedAt: Date.now() })
           await this.loadGemma(host, model); gemmaUsed = true
           this.patch(job, { progressLabel: 'Gemma is rewriting the prompt' })
-          const r = await enrich(host, model, 'image', p.prompt); prompt = r.text
+          // Photograph, artwork or design: a different trade, so a different brief.
+          const craft = !p.craft || p.craft === 'auto' ? detectCraft(p.prompt) : p.craft
+          const r = await enrich(host, model, 'image', p.prompt, undefined, IMAGE_BRIEFS[craft]); prompt = r.text
           this.patch(job, { enriched: { prompt: r.used ? r.text : undefined }, progressLabel: r.detail })
         }
         if (job.status === 'cancelled') return

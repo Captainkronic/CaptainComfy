@@ -2,6 +2,7 @@ import type { JSX } from 'react'
 import { useEffect, useState } from 'react'
 import type { Settings } from '@shared/ipc'
 import { isLoopback } from '@shared/net'
+import { BRIEFS, IMAGE_BRIEFS, SAMPLING_NOTE } from '@shared/enrich'
 import { call } from '../lib'
 import { useStore } from '../state/store'
 
@@ -48,6 +49,20 @@ export default function SettingsPanel(): JSX.Element {
           <button className="btn" style={{ marginTop: 8 }} onClick={() => { void call('comfy:start').then((r) => { setSaved(r.detail); void refreshHealth() }) }}>Test: start ComfyUI on the Studio now</button>
         </div>
       )}
+      {/* What Gemma is actually told. Enrichment changes the prompt that gets rendered, so the
+          instructions behind it should not be invisible. */}
+      <div className="field"><label>What Gemma is told</label>
+        <div className="hint">Enrich rewrites your prompt before it is rendered. These are the exact
+          instructions it works from, by trade. The Image tab picks one per job — from the prompt when
+          &ldquo;Gemma writes as&rdquo; is on Auto, or whichever you choose there.</div>
+        {([['Photographer', IMAGE_BRIEFS.photo], ['Illustrator', IMAGE_BRIEFS.art], ['Graphic designer', IMAGE_BRIEFS.design],
+           ['Image edit', BRIEFS.image_edit], ['Music style', BRIEFS.music_style], ['Song lyrics', BRIEFS.music_lyrics]] as const).map(([name, text]) => (
+          <details key={name} className="prompt-preview brief"><summary>{name}</summary>
+            <div className="enriched">{text}</div>
+          </details>
+        ))}
+        <div className="hint">{SAMPLING_NOTE}</div>
+      </div>
       <button className="btn primary" onClick={() => { void apply({ comfyHost: s.comfyHost, omlxHost: s.omlxHost, omlxModel: s.omlxModel, comfyDir: s.comfyDir, sshUser: s.sshUser, sshKey: s.sshKey, remoteStartCommand: s.remoteStartCommand }) }}>Save</button>
       <div className="hint">{saved}</div>
     </>

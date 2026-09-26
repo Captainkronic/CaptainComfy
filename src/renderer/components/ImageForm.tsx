@@ -4,11 +4,18 @@ import { ASPECTS, type AspectKey, type ImageParams } from '@shared/types'
 import { sizeFor } from '@shared/sizing'
 import { IMAGE_MODELS, imageModel, imageQualityOf, type ImageModel, type ImageQuality } from '@shared/models'
 import { IDEA_CATEGORIES, type IdeaCategory } from '@shared/ideas'
+import { detectCraft } from '@shared/enrich'
 import { call } from '../lib'
 import { pick } from '@shared/suggestions'
 import Suggest from './Suggest'
 import Segmented from './Segmented'
 
+const CRAFT_NAME = { photo: 'Photographer', art: 'Illustrator', design: 'Graphic designer' } as const
+const CRAFT_HINT = {
+  photo: 'Shot size, focal length and aperture, a named lighting pattern with its key-to-fill ratio, shutter when there is motion, and a small palette.',
+  art: 'The medium named by the marks it leaves — pooling pigment, carving marks, torn paper edges — because a style word alone returns a filtered photograph.',
+  design: 'Format and proportions, one focal element, a reserved empty area for the words, and a small palette. No lens or exposure.'
+} as const
 const QUALITY_KEY = 'captaincomfy.imageQuality', MODEL_KEY = 'captaincomfy.imageModel', CATS_KEY = 'captaincomfy.ideaCategories'
 /** Which kinds of idea ⟳ New idea may offer. All of them until you say otherwise. */
 function rememberedCats(): IdeaCategory[] {
@@ -52,7 +59,7 @@ function IdeaTypes({ cats, onToggle }: { cats: IdeaCategory[]; onToggle: (k: Ide
 export default function ImageForm(): JSX.Element {
   const r0 = remembered(); const q0 = IMAGE_MODELS[r0.model].presets[r0.quality]
   // The opening idea honours the remembered categories too, or the form contradicts its own toggles.
-  const [p, setP] = useState<ImageParams>({ prompt: pick('image', undefined, rememberedCats()), enrich: true, model: r0.model, aspect: '1:1', megapixels: q0.megapixels, count: 1, steps: q0.steps, seed: null, upscale: q0.upscale, negative: '' })
+  const [p, setP] = useState<ImageParams>({ prompt: pick('image', undefined, rememberedCats()), enrich: true, model: r0.model, aspect: '1:1', megapixels: q0.megapixels, count: 1, steps: q0.steps, seed: null, upscale: q0.upscale, negative: '', craft: 'auto' })
   const [busy, setBusy] = useState(false)
   const [cats, setCats] = useState<IdeaCategory[]>(rememberedCats)
   // Unticking the last category would leave New idea nothing to draw on, so the last one stays put.
@@ -93,6 +100,19 @@ export default function ImageForm(): JSX.Element {
           : <>{spec.label} renders without a guidance pass (CFG 1), so a negative prompt has no effect on it. Pick another model to use one.</>}</div>
       </div>
       <label className="toggle"><input type="checkbox" checked={p.enrich} onChange={(e) => up('enrich', e.target.checked)} /> Enrich with Gemma</label>
+      {p.enrich && (
+        <div className="field"><label>Gemma writes as</label>
+          <select value={p.craft ?? 'auto'} onChange={(e) => up('craft', e.target.value as ImageParams['craft'])}>
+            <option value="auto">Auto — read from the prompt</option>
+            <option value="photo">Photographer</option>
+            <option value="art">Illustrator</option>
+            <option value="design">Graphic designer</option>
+          </select>
+          <div className="hint">{CRAFT_HINT[(p.craft ?? 'auto') === 'auto' ? detectCraft(p.prompt) : (p.craft as 'photo' | 'art' | 'design')]}
+            {(p.craft ?? 'auto') === 'auto' && <> <span className="meta">(auto picked {CRAFT_NAME[detectCraft(p.prompt)]})</span></>}
+          </div>
+        </div>
+      )}
       <div className="field"><label>Model</label>
         <Segmented options={(Object.keys(IMAGE_MODELS) as ImageModel[]).map((k) => ({ key: k, label: IMAGE_MODELS[k].label, hint: `${IMAGE_MODELS[k].kind === 'sdxl' ? 'SDXL' : k === 'zimage' ? 'Z-Image, distilled' : 'Z-Image, base'} · ~${Math.round(IMAGE_MODELS[k].memory.peakGb)} GB` }))} value={model} onChange={setModel} />
         <div className="hint">{spec.blurb}. Switching models frees the other one's weights first (they cannot share the Studio's memory), so the first render after a switch loads cold.</div>

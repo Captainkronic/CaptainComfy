@@ -157,6 +157,37 @@ never bought anything), at identical memory — 4.9 GB for SDXL, 11.7 GB for the
 flags are gone from `settings.ts`, `~/.local/bin/comfy-start` and Comfy Desktop's `installations.json`
 (backups `*.bak-20260922-bf16`). **A black render means NaN in sampling — look at precision, not the VAE.**
 
+### What Enrich actually tells Gemma
+
+A photograph, a drawing and a poster are made by different people with different instincts, and one
+generic brief served none of them — it answered "a birthday card for a 4-year-old who loves
+dinosaurs" with *"high-quality 3D digital art ... and a wide-angle lens"*, which is a photographic
+instinct applied to a design job, plus two phrases that mean nothing to a renderer.
+
+There are now three briefs in `src/shared/enrich.ts`, and the Image tab picks one per job:
+
+- **Photographer** — states shot size and camera height, focal length in mm and aperture with what
+  each is for (35mm keeps the subject in its environment, 85mm flatters and separates, f/5.6-8 is the
+  sharpness sweet spot), shutter when there is motion, and light in three named parts: direction,
+  quality and colour. With a person in frame it asks for a real pattern by name — Rembrandt, loop,
+  butterfly, split, clamshell, three-point, short or broad — and a key-to-fill ratio.
+- **Illustrator** — names the medium by the marks it leaves, because a style word alone returns a
+  photograph with a filter over it: pigment pooling at a wet edge, visible carving marks and
+  imperfect registration, torn fibrous paper edges, an unerased construction line.
+- **Graphic designer** — format and proportions first, one focal element, a **reserved empty region
+  for the words** named as a composition instruction, a small palette with where each colour sits,
+  and negative space as a decision. No camera settings.
+
+All three forbid the phrases that are the tell of an amateur prompt — `masterpiece`, `4k`,
+`ultra detailed`, `trending on artstation`, `HDR` — since none of them are visible in a picture.
+
+**Which one** is chosen by `detectCraft()` from the prompt, and the artefact beats the medium: a
+poster painted in watercolour is a design job, because its shape and its reserved space matter more
+than the brush. **Gemma writes as** on the Image tab overrides it, and shows what Auto picked.
+
+The briefs are not hidden: **Settings → What Gemma is told** prints all six verbatim (the three
+above plus image edit, music style and lyrics) along with the sampling each uses.
+
 ### Negative prompts
 
 The Image tab has a **Negative prompt** box under the prompt. Left empty it uses the model's own

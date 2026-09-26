@@ -96,3 +96,7 @@ audio { width: 100%; }
 /* A second, shorter prompt box (the negative). Disabled when the model cannot use one. */
 .field textarea.short { min-height: 54px; }
 .field textarea:disabled { opacity: .5; cursor: not-allowed; }
+
+/* The briefs in Settings: readable blocks, not one wall of text. */
+.prompt-preview.brief { margin-top: 6px; }
+.prompt-preview.brief .enriched { max-height: 260px; overflow: auto; font-size: 12px; line-height: 1.5; }
