@@ -2,7 +2,7 @@
 # Start the Studio's ComfyUI headlessly if nothing answers on 8188. Idempotent; safe to call
 # repeatedly and from a remote ssh session. Installed to ~/.local/bin/comfy-start by deploy.sh.
 set -uo pipefail
-COMFY_DIR="${COMFY_DIR:-/Volumes/StudioExtend/ComfyExtend/StudioUi/ComfyUI}"
+COMFY_DIR="${COMFY_DIR:-/Volumes/StudioTwo/ComfyExtend/StudioUi/ComfyUI}"
 YAML="${COMFY_YAML:-$HOME/Library/Application Support/Comfy Desktop/instance-model-paths/inst-1786875206899.yaml}"
 INPUT="${COMFY_INPUT:-$HOME/ComfyUI-Shared/input}"; OUTPUT="${COMFY_OUTPUT:-$HOME/ComfyUI-Shared/output}"
 LISTEN="${COMFY_LISTEN:-127.0.0.1,100.120.207.33}"; PORT="${COMFY_PORT:-8188}"
